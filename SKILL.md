@@ -1,12 +1,15 @@
 ---
 name: x-bookmarks
-version: 1.1.0
+version: 2.0.0
 description: >
   Fetch, summarize, and manage X/Twitter bookmarks via bird CLI or X API v2.
+  Scrape and transform content from any X/Twitter URL or linked article.
   Use when: (1) user says "check my bookmarks", "what did I bookmark", "bookmark digest",
   "summarize my bookmarks", "x bookmarks", "twitter bookmarks", (2) user wants a periodic
   digest of saved tweets, (3) user wants to categorize, search, or analyze their bookmarks,
-  (4) scheduled bookmark digests via cron.
+  (4) scheduled bookmark digests via cron, (5) user shares a tweet/X URL and wants the
+  content scraped, (6) user wants to turn X content into an SOP, PID, or concept doc,
+  (7) user says "scrape this", "grab this tweet", "turn this into a doc".
   Auth: bird CLI with browser cookies, OR X API v2 with OAuth 2.0 tokens.
 requires:
   env:
@@ -20,14 +23,16 @@ requires:
     - ~/.config/x-bookmarks/tokens.json: "OAuth 2.0 tokens for X API v2 backend"
 security:
   credentials: >
-    This skill accesses X/Twitter bookmarks, which requires authentication.
+    This skill accesses X/Twitter bookmarks and tweet content, which requires authentication.
     Two methods are supported: (1) bird CLI using browser cookies (AUTH_TOKEN/CT0 env vars
     sourced from .env.bird), or (2) X API v2 with OAuth 2.0 tokens stored locally.
+    The content scraper also fetches external article URLs linked in tweets (read-only).
     All credentials are stored locally on the user's machine and never transmitted
     to third parties. The user must explicitly provide or authorize credentials.
   permissions:
-    - read: "X/Twitter bookmarks (read-only access)"
-    - write: "Local files only (bookmark state, token storage)"
+    - read: "X/Twitter bookmarks and individual tweets (read-only access)"
+    - read: "External article URLs linked in tweets (HTTP fetch, read-only)"
+    - write: "Local files only (bookmark state, token storage, scraped content)"
 ---
 
 # X Bookmarks v2
@@ -197,6 +202,152 @@ For stale bookmarks:
 3. Present: "Apply it today or clear it"
 4. User can unbookmark via: `bird unbookmark <tweet-id>` (bird only)
 
+## Content Scraper
+
+Scrape and transform content from any X/Twitter URL or linked article into actionable documents.
+
+**Trigger phrases:** "scrape this tweet", "grab this content", "turn this into a doc/SOP/PID",
+"what does this tweet say", or simply pasting an X URL.
+
+### Scraping a URL
+
+```bash
+# Scrape a tweet (fetches tweet + crawls any linked articles)
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456"
+
+# Output as markdown instead of JSON
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456" --output markdown
+
+# Scrape an external article directly
+python3 scripts/x_content_scraper.py "https://example.com/article" --output markdown
+
+# Don't crawl linked URLs (tweet content only)
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456" --no-crawl
+
+# Save output to file
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456" -o markdown --save output/note.md
+
+# Pretty-print JSON
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456" --pretty
+```
+
+### Transforming Content
+
+Pipe scraped JSON into the content processor to generate structured documents:
+
+```bash
+# Store as markdown note
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py --format markdown
+
+# Generate a Business SOP
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py --format sop
+
+# Generate a Project Initiation Document (PID)
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py --format pid
+
+# Generate a Concept Document
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py --format concept
+
+# Add context for more targeted output
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py \
+  --format sop --context "Apply to our SaaS onboarding flow"
+
+# Save transformed output to file
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py \
+  --format pid --save output/project.md
+
+# From a previously saved JSON file
+python3 scripts/content_processor.py --format concept --input scraped.json
+```
+
+### Content Scraper Output Format
+
+The scraper returns JSON with this structure:
+```json
+{
+  "source_url": "https://x.com/user/status/123",
+  "source_type": "tweet",
+  "tweet": {
+    "tweet_id": "123",
+    "text": "Full tweet text (including long-form note tweets)",
+    "created_at": "2026-02-11T01:00:06.000Z",
+    "author": {
+      "username": "handle",
+      "name": "Display Name",
+      "bio": "Author bio"
+    },
+    "metrics": {
+      "replies": 46, "retweets": 60, "likes": 801,
+      "bookmarks": 12, "views": 50000
+    },
+    "media": [{ "type": "photo", "url": "...", "alt_text": "..." }],
+    "linked_urls": [
+      { "url": "https://example.com/article", "title": "...", "description": "..." }
+    ],
+    "referenced_tweets": [
+      { "type": "quoted", "id": "456", "text": "Quoted tweet content" }
+    ]
+  },
+  "articles": [
+    {
+      "url": "https://example.com/article",
+      "title": "Article Title",
+      "description": "Meta description",
+      "markdown": "Full article content as markdown..."
+    }
+  ]
+}
+```
+
+### Document Formats
+
+| Format | Use Case | What You Get |
+|--------|----------|--------------|
+| `markdown` | Quick save, reference notes | Clean markdown with attribution, content, and linked articles |
+| `sop` | Process documentation | Structured SOP with purpose, scope, procedure steps, outcomes |
+| `pid` | Project planning | Full PID with objectives, deliverables, timeline, risks |
+| `concept` | Idea exploration | Core idea, key insights, applications, action items |
+
+### Content Scraper Workflows
+
+#### 6. Scrape & Store
+
+When user shares a tweet/URL and wants to save it:
+1. Run the scraper on the URL
+2. Convert to markdown
+3. Save to `output/` directory with a descriptive filename
+4. Confirm what was saved and offer next steps
+
+#### 7. Scrape & Transform
+
+When user wants to turn content into a specific document:
+1. Run the scraper on the URL
+2. Ask user which format (SOP, PID, concept) — or use what they specified
+3. Ask for additional context if not provided
+4. Generate the document
+5. Present it and offer to refine sections
+
+#### 8. Scrape & Execute
+
+When user shares content and gives specific instructions:
+1. Run the scraper to extract the content
+2. Read the user's instructions (e.g., "build this", "implement this strategy")
+3. Use the scraped content as context to execute the task
+4. This is the most powerful mode — the scraper feeds content directly into agent actions
+
+Format output for scrape workflows as:
+```
+🔗 SCRAPED: [tweet summary or article title]
+   Author: @username
+   Content: [brief summary]
+   Links: [N linked articles crawled]
+
+→ 🤖 READY TO: [what the agent can do next based on user intent]
+   • Save as markdown note
+   • Generate SOP / PID / concept doc
+   • Execute specific instructions with this content as context
+```
+
 ## Error Handling
 
 | Error | Cause | Fix |
@@ -208,6 +359,10 @@ For stale bookmarks:
 | Rate limit (429) | Too many API requests | Wait and retry, use `--count` to limit |
 | "No X API token found" | Haven't run auth setup | Run `x_api_auth.py --client-id YOUR_ID` |
 | Token refresh failed | Refresh token expired | Re-run `x_api_auth.py` to re-authorize |
+| "Failed to fetch: HTTP 403" | Article blocks scraping | Content may be paywalled; use tweet text only |
+| "Failed to fetch: HTTP 404" | URL is dead or moved | Check if the URL is still valid |
+| "Too many redirects" | Redirect loop on article | Try the final URL directly |
+| Scraper returns empty markdown | Page is JS-rendered SPA | Content may require browser; tweet text is still available |
 
 ## Tips
 
@@ -216,3 +371,8 @@ For stale bookmarks:
 - API: includes `bookmarkCount` and `viewCount` (bird may not)
 - Bookmark folders supported via bird `--folder-id <id>`
 - Both backends output identical JSON — workflows are backend-agnostic
+- Content scraper: use `--no-crawl` for fast tweet-only extraction
+- Content scraper: pipe output through `content_processor.py` for structured docs
+- Content scraper: use `--context` flag to guide document generation toward a specific use case
+- Content scraper: supports long-form note tweets (>280 chars) automatically
+- SOP/PID/Concept templates provide scaffolding — the agent should fill in the `[ ]` placeholders using the scraped content and user context

@@ -29,6 +29,10 @@ You can also say:
 - **"what did I bookmark this week?"** — filtered by time
 - **"find patterns in my bookmarks"** — clusters topics you keep saving
 - **"clean up old bookmarks"** — flags stale saves with TL;DRs
+- **"scrape this tweet"** + paste a URL — extracts full content + linked articles
+- **"turn this into an SOP"** — generates a structured operating procedure from any X content
+- **"make a PID from this"** — creates a Project Initiation Document
+- **"create a concept doc"** — distills key insights and next steps
 
 ### Scheduled Digests
 
@@ -41,6 +45,8 @@ Set up a daily or weekly cron job and your agent will automatically check for ne
 - Proposes specific actions your AI agent can execute
 - Supports scheduled digests via cron
 - Pattern detection across bookmark history
+- **Scrapes any X/Twitter URL** — extracts tweet content + crawls linked articles
+- **Transforms content** into structured documents (SOP, PID, concept doc, markdown)
 
 ## Quick Start
 
@@ -72,16 +78,50 @@ You don't need to pick a backend. The skill automatically:
 2. If not, checks for X API tokens in `~/.config/x-bookmarks/`
 3. If neither, walks you through setup (offers both options)
 
+## Content Scraper
+
+Paste any X/Twitter URL and your agent will scrape the full content:
+
+```bash
+# Scrape a tweet (fetches tweet text + crawls linked articles)
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456" --pretty
+
+# Save as markdown
+python3 scripts/x_content_scraper.py "https://x.com/user/status/123456" -o markdown --save output/note.md
+
+# Transform into a business SOP
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py --format sop
+
+# Generate a Project Initiation Document
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py --format pid
+
+# Create a concept doc with context
+python3 scripts/x_content_scraper.py "URL" | python3 scripts/content_processor.py \
+  --format concept --context "Apply to our growth strategy"
+```
+
+### Output Formats
+
+| Format | Command | Use Case |
+|--------|---------|----------|
+| Raw JSON | `--output json` | Programmatic use, piping to processor |
+| Markdown | `--output markdown` | Quick reference notes |
+| SOP | `--format sop` | Process documentation |
+| PID | `--format pid` | Project planning |
+| Concept | `--format concept` | Idea exploration |
+
 ## Files
 
 ```
-SKILL.md              — Agent instructions (the skill itself)
+SKILL.md                    — Agent instructions (the skill itself)
 scripts/
-  fetch_bookmarks.sh      — bird CLI wrapper
-  fetch_bookmarks_api.py  — X API v2 fetcher
-  x_api_auth.py           — OAuth 2.0 PKCE auth helper
+  fetch_bookmarks.sh        — bird CLI wrapper
+  fetch_bookmarks_api.py    — X API v2 fetcher
+  x_api_auth.py             — OAuth 2.0 PKCE auth helper
+  x_content_scraper.py      — URL scraper (tweets + articles)
+  content_processor.py      — Content-to-document transformer (SOP, PID, concept)
 references/
-  auth-setup.md           — Detailed setup guide for both backends
+  auth-setup.md             — Detailed setup guide for both backends
 ```
 
 ## Requirements
