@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY scripts/ ./scripts/
 COPY web/api/ ./web/api/
 
-# Railway provides PORT env var
+# Fly.io provides PORT env var (default 8000)
 ENV PORT=8000
 
 EXPOSE ${PORT}

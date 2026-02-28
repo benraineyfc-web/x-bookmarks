@@ -1,0 +1,31 @@
+# fly.toml — Fly.io deployment config for X Content Scraper
+# Deploy: flyctl launch / flyctl deploy
+# Docs: https://fly.io/docs/reference/configuration/
+
+app = "x-content-scraper"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "web/api/Dockerfile"
+
+[env]
+  APP_URL = "https://x-content-scraper.fly.dev"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8000
+    path = "/api/health"
+    interval = "30s"
+    timeout = "5s"

@@ -1,141 +1,130 @@
-# Deployment Guide
+# Deployment Guide — Fly.io (Single Service)
 
-Two services: **Next.js frontend on Vercel** + **FastAPI backend on Railway**.
-
-## Architecture
+One service, one URL, works on mobile + desktop. Free tier, $0 spending cap.
 
 ```
-[Mobile/Desktop Browser]
+[Phone / Desktop Browser]
         │
         ▼
-[Vercel — Next.js Frontend]
-        │ HTTPS
-        ▼
-[Railway — FastAPI Backend]
-        │
-        ├── X API v2 (tweet data)
-        └── External URLs (article scraping)
+[Fly.io — FastAPI]
+   ├── Serves UI at /
+   ├── API at /api/*
+   ├── Auth at /auth/*
+   │
+   ├── X API v2 (tweet data)
+   └── External URLs (article scraping)
 ```
 
-## Step 1: Deploy the Backend (Railway)
+## Prerequisites
 
-### 1a. Create a Railway project
+1. A free Fly.io account at [fly.io](https://fly.io)
+2. `flyctl` CLI installed: `brew install flyctl` (or `curl -L https://fly.io/install.sh | sh`)
+3. X Developer app credentials (client ID + secret from [developer.x.com](https://developer.x.com))
+4. Your X API tokens (from running local auth)
 
-1. Go to [railway.app](https://railway.app) and sign in with GitHub
-2. Click **New Project** → **Deploy from GitHub repo**
-3. Select your `x-bookmarks` repository
-4. Railway will detect the Dockerfile at `web/api/Dockerfile`
+## Step 1: Set spending limit to $0
 
-### 1b. Set environment variables
+**Do this first, before anything else.**
 
-In the Railway dashboard, go to **Variables** and add:
+1. Log into [fly.io/dashboard](https://fly.io/dashboard)
+2. Go to **Billing** → **Manage billing**
+3. Under **Spending limit**, set it to **$0**
+4. This hard-caps your bill at $0. The free tier includes:
+   - 3 shared-cpu-1x VMs (256MB RAM)
+   - 160GB outbound bandwidth
+   - Enough for this tool running 24/7
 
-| Variable | Value |
-|----------|-------|
-| `FRONTEND_URL` | `https://your-app.vercel.app` (set after Vercel deploy) |
-| `API_URL` | Your Railway public URL (shown in Settings → Domains) |
-| `X_CLIENT_ID` | Your X Developer App client ID |
-| `X_CLIENT_SECRET` | Your X Developer App client secret |
-| `SESSION_SECRET` | Run: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+## Step 2: Get your X API tokens
 
-**Shortcut for single-user mode** (skip OAuth):
-```
-X_API_BEARER_TOKEN=<your token from local auth>
-X_API_REFRESH_TOKEN=<your refresh token>
-```
-
-### 1c. Set the root directory
-
-In Railway **Settings**, set:
-- **Root Directory**: `/` (project root, so Dockerfile can access `scripts/`)
-- **Custom Start Command**: (leave empty, Dockerfile handles it)
-
-### 1d. Get your Railway URL
-
-Railway auto-generates a URL like `your-api-production.up.railway.app`.
-Go to **Settings → Networking → Public Domain** to enable it.
-
-## Step 2: Deploy the Frontend (Vercel)
-
-### 2a. Import to Vercel
-
-1. Go to [vercel.com](https://vercel.com) and sign in with GitHub
-2. Click **Add New → Project** → Import your `x-bookmarks` repo
-3. Set **Root Directory** to `web/frontend`
-4. Framework Preset: **Next.js** (auto-detected)
-
-### 2b. Set environment variables
-
-| Variable | Value |
-|----------|-------|
-| `NEXT_PUBLIC_API_URL` | Your Railway URL (e.g. `https://your-api-production.up.railway.app`) |
-
-### 2c. Deploy
-
-Click **Deploy**. Vercel builds and ships the Next.js app.
-
-### 2d. Update Railway FRONTEND_URL
-
-Go back to Railway and update `FRONTEND_URL` to your Vercel URL.
-
-## Step 3: Configure X OAuth (if using full auth)
-
-1. Go to [developer.x.com](https://developer.x.com) → your app settings
-2. Under **Authentication settings**, add a callback URL:
-   ```
-   https://your-api-production.up.railway.app/auth/callback
-   ```
-3. Ensure these scopes are enabled: `tweet.read`, `users.read`, `bookmark.read`, `offline.access`
-
-## Quick-Start: Single-User Mode
-
-If this is just for you, skip the OAuth setup entirely:
-
-1. Run auth locally:
-   ```bash
-   python3 scripts/x_api_auth.py --client-id "YOUR_CLIENT_ID"
-   ```
-2. Copy the tokens:
-   ```bash
-   cat ~/.config/x-bookmarks/tokens.json
-   ```
-3. Set in Railway:
-   - `X_API_BEARER_TOKEN` = the `access_token` value
-   - `X_API_REFRESH_TOKEN` = the `refresh_token` value
-   - `X_CLIENT_ID` = your client ID (needed for auto-refresh)
-   - `X_CLIENT_SECRET` = your client secret (if applicable)
-
-The backend will auto-refresh the token using the refresh token.
-
-## Local Development
-
-Run both services locally:
+If you haven't already, run auth locally:
 
 ```bash
-# Terminal 1: Backend
-cd web/api
-pip install -r requirements.txt
-FRONTEND_URL=http://localhost:3000 API_URL=http://localhost:8000 \
-  uvicorn main:app --reload --port 8000
-
-# Terminal 2: Frontend
-cd web/frontend
-npm install
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+python3 scripts/x_api_auth.py --client-id "YOUR_CLIENT_ID"
 ```
 
-Open http://localhost:3000.
+Then grab the tokens:
 
-## API Endpoints
+```bash
+cat ~/.config/x-bookmarks/tokens.json
+```
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/scrape` | Scrape a URL → structured JSON |
-| `POST` | `/process` | Transform JSON → document |
-| `POST` | `/scrape-and-process` | One-shot: URL → document |
-| `GET` | `/auth/login` | Start X OAuth flow |
-| `GET` | `/auth/callback` | OAuth callback handler |
-| `GET` | `/auth/status` | Check auth status |
-| `POST` | `/auth/logout` | Clear session |
-| `GET` | `/health` | Health check |
-| `GET` | `/docs` | Interactive API docs (Swagger) |
+You need `access_token` and `refresh_token` from that file.
+
+## Step 3: Deploy
+
+```bash
+# Login to Fly.io
+flyctl auth login
+
+# Launch the app (first time only)
+flyctl launch --no-deploy
+
+# Set your secrets (tokens + credentials)
+flyctl secrets set \
+  X_API_BEARER_TOKEN="your_access_token_here" \
+  X_API_REFRESH_TOKEN="your_refresh_token_here" \
+  X_CLIENT_ID="your_client_id" \
+  X_CLIENT_SECRET="your_client_secret"
+
+# Deploy
+flyctl deploy
+```
+
+That's it. Your app is live at `https://x-content-scraper.fly.dev`.
+
+## Step 4: Update the APP_URL
+
+After your first deploy, Fly.io gives you a URL. Update it:
+
+```bash
+flyctl secrets set APP_URL="https://your-app-name.fly.dev"
+```
+
+## Step 5 (Optional): Set up X OAuth callback
+
+Only needed if you want browser-based X login (multi-user mode):
+
+1. Go to [developer.x.com](https://developer.x.com) → your app
+2. Under **Authentication settings**, add callback URL:
+   ```
+   https://your-app-name.fly.dev/auth/callback
+   ```
+
+For single-user mode (just you), the bearer token from Step 2 is all you need.
+
+## Open on your phone
+
+Navigate to `https://your-app-name.fly.dev` on any device. Bookmark it.
+
+## Useful commands
+
+```bash
+flyctl status          # Check app status
+flyctl logs            # View logs
+flyctl ssh console     # SSH into the machine
+flyctl secrets list    # List configured secrets
+flyctl scale count 1   # Ensure only 1 machine (stay free)
+flyctl destroy         # Delete app entirely
+```
+
+## Local development
+
+```bash
+cd web/api
+pip install -r requirements.txt
+APP_URL=http://localhost:8000 uvicorn main:app --reload --port 8000
+```
+
+Open http://localhost:8000.
+
+## Cost breakdown
+
+| Resource | Free allowance | This app uses |
+|----------|---------------|---------------|
+| VM | 3x shared-cpu-1x (256MB) | 1x shared-cpu-1x (256MB) |
+| Bandwidth | 160GB/month | ~1-5GB/month |
+| Storage | 3GB persistent | 0 (stateless) |
+
+With `auto_stop_machines = "stop"` in fly.toml, the machine sleeps when idle
+and wakes on the first request (~1-2s cold start). This keeps usage well
+within free limits.
