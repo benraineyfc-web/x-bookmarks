@@ -4,7 +4,7 @@ X Content Scraper — fetch and extract content from X/Twitter URLs.
 
 Given a tweet URL or article URL shared on X, this tool:
 1. Detects the URL type (tweet vs external article)
-2. Fetches tweet content via X API v2 (reusing existing auth)
+2. Fetches tweet content via free oEmbed API (no API key needed)
 3. Crawls any linked URLs within the tweet
 4. Converts HTML to clean markdown
 5. Outputs structured JSON with all extracted content
@@ -17,7 +17,7 @@ Usage:
 Output formats: json (default), markdown
 
 Environment:
-    X_API_BEARER_TOKEN — override: use this Bearer token directly
+    X_API_BEARER_TOKEN — optional: use X API v2 for richer data (metrics, media)
 """
 
 import argparse
@@ -31,9 +31,12 @@ import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 
-# Import auth helper (same directory)
+# Import auth helper (same directory, optional — only needed for CLI with local tokens)
 sys.path.insert(0, str(Path(__file__).parent))
-from x_api_auth import get_valid_token
+try:
+    from x_api_auth import get_valid_token
+except ImportError:
+    get_valid_token = lambda: None
 
 BASE_URL = "https://api.x.com/2"
 
@@ -316,6 +319,41 @@ class ArticleExtractor(HTMLParser):
         return "\n".join(self.segments)
 
 
+# --- oEmbed HTML Parser ---
+
+class OEmbedParser(HTMLParser):
+    """Parse oEmbed HTML blockquote to extract tweet text and links."""
+
+    def __init__(self):
+        super().__init__()
+        self.text_parts = []
+        self.links = []
+        self.in_p = False
+        self.in_a = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        tag = tag.lower()
+        if tag == "p":
+            self.in_p = True
+        elif tag == "a" and self.in_p:
+            self.in_a = True
+            href = attrs_dict.get("href", "")
+            if href:
+                self.links.append(href)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag == "p":
+            self.in_p = False
+        elif tag == "a":
+            self.in_a = False
+
+    def handle_data(self, data):
+        if self.in_p:
+            self.text_parts.append(data)
+
+
 # --- Web Fetching ---
 
 def create_ssl_context():
@@ -369,7 +407,68 @@ def fetch_url(url: str, max_redirects: int = 5, timeout: int = 15) -> dict:
     return {"url": current_url, "status": 0, "body": "Too many redirects", "content_type": ""}
 
 
-# --- Tweet Fetching via X API ---
+# --- Free Tweet Fetching via oEmbed ---
+
+def process_tweet_free(tweet_id: str, username: str, tweet_url: str) -> dict | None:
+    """Fetch tweet data for free using Twitter's oEmbed endpoint. No API key needed."""
+    oembed_api = (
+        "https://publish.twitter.com/oembed?"
+        + urllib.parse.urlencode({"url": tweet_url, "omit_script": "true"})
+    )
+    resp = fetch_url(oembed_api)
+    if resp["status"] != 200:
+        return None
+
+    try:
+        oembed = json.loads(resp["body"])
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    # Parse tweet text and links from the oEmbed HTML blockquote
+    parser = OEmbedParser()
+    parser.feed(oembed.get("html", ""))
+    text = "".join(parser.text_parts).strip()
+
+    # Author info from oEmbed fields
+    author_name = oembed.get("author_name", username)
+    author_url = oembed.get("author_url", "")
+    oembed_username = author_url.rstrip("/").rsplit("/", 1)[-1] if author_url else username
+
+    # Resolve t.co links and filter out X/Twitter self-links
+    linked_urls = []
+    for link in parser.links:
+        resolved = link
+        if "t.co/" in link:
+            resolved_resp = fetch_url(link)
+            if resolved_resp.get("url"):
+                resolved = resolved_resp["url"]
+        # Skip X/Twitter self-links
+        if re.match(r"https?://(?:www\.)?(?:x\.com|twitter\.com)/", resolved):
+            continue
+        linked_urls.append({
+            "url": resolved,
+            "display_url": resolved,
+            "title": "",
+            "description": "",
+        })
+
+    return {
+        "tweet_id": tweet_id,
+        "text": text,
+        "created_at": "",
+        "author": {
+            "username": oembed_username,
+            "name": author_name,
+            "bio": "",
+        },
+        "metrics": {},
+        "media": [],
+        "linked_urls": linked_urls,
+        "referenced_tweets": [],
+    }
+
+
+# --- Tweet Fetching via X API (optional, requires bearer token) ---
 
 def fetch_tweet(tweet_id: str, token: str) -> dict:
     """Fetch a single tweet by ID via X API v2."""
@@ -483,6 +582,9 @@ def scrape_url(url: str, crawl_links: bool = True, token: str = None) -> dict:
     """
     Scrape content from a URL. Handles both tweet URLs and external articles.
 
+    For tweets: uses free oEmbed by default. If a bearer token is provided,
+    uses X API v2 for richer data (metrics, media, referenced tweets).
+
     Returns a structured dict with all extracted content.
     """
     parsed = parse_x_url(url)
@@ -494,14 +596,25 @@ def scrape_url(url: str, crawl_links: bool = True, token: str = None) -> dict:
     }
 
     if parsed["type"] == "tweet":
+        # Check for optional API token (env or explicit)
         if not token:
-            token = os.environ.get("X_API_BEARER_TOKEN") or get_valid_token()
-        if not token:
-            print("No X API token available. Set X_API_BEARER_TOKEN or run x_api_auth.py first.",
-                  file=sys.stderr)
-            sys.exit(1)
+            token = os.environ.get("X_API_BEARER_TOKEN", "")
 
-        tweet_data = process_tweet(parsed["tweet_id"], token)
+        tweet_data = None
+        if token:
+            # Premium path: X API v2 (richer data)
+            try:
+                tweet_data = process_tweet(parsed["tweet_id"], token)
+            except Exception as e:
+                print(f"X API failed, falling back to free method: {e}", file=sys.stderr)
+
+        if not tweet_data:
+            # Free path: oEmbed (no API key needed)
+            tweet_data = process_tweet_free(parsed["tweet_id"], parsed["username"], url)
+
+        if not tweet_data:
+            raise ValueError(f"Could not fetch tweet. It may be deleted or from a private account.")
+
         result["tweet"] = tweet_data
 
         # Crawl linked URLs within the tweet
