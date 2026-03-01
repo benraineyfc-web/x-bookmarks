@@ -434,15 +434,25 @@ def process_tweet_free(tweet_id: str, username: str, tweet_url: str) -> dict | N
     author_url = oembed.get("author_url", "")
     oembed_username = author_url.rstrip("/").rsplit("/", 1)[-1] if author_url else username
 
-    # Resolve t.co links and filter out X/Twitter self-links
-    linked_urls = []
+    # Resolve t.co links
+    resolved_map = {}
     for link in parser.links:
         resolved = link
         if "t.co/" in link:
             resolved_resp = fetch_url(link)
             if resolved_resp.get("url"):
                 resolved = resolved_resp["url"]
-        # Skip X/Twitter self-links
+        resolved_map[link] = resolved
+
+    # Replace t.co URLs in tweet text with resolved URLs
+    for original, resolved in resolved_map.items():
+        if original != resolved and original in text:
+            text = text.replace(original, resolved)
+
+    # Build linked_urls, excluding X/Twitter self-links
+    linked_urls = []
+    for link in parser.links:
+        resolved = resolved_map.get(link, link)
         if re.match(r"https?://(?:www\.)?(?:x\.com|twitter\.com)/", resolved):
             continue
         linked_urls.append({
@@ -466,6 +476,107 @@ def process_tweet_free(tweet_id: str, username: str, tweet_url: str) -> dict | N
         "linked_urls": linked_urls,
         "referenced_tweets": [],
     }
+
+
+# --- Tweet Fetching via fxtwitter API (free fallback for richer data) ---
+
+def process_tweet_fxtwitter(tweet_id: str, username: str) -> dict | None:
+    """Fetch tweet data via fxtwitter API (free, no auth).
+
+    Used as a fallback when oEmbed returns minimal content (e.g. tweets
+    that link to X Articles, image-only tweets, etc.).
+    Returns the same dict format as process_tweet_free, plus an optional
+    '_x_article' key containing extracted X Article content.
+    """
+    api_url = f"https://api.fxtwitter.com/{username}/status/{tweet_id}"
+    resp = fetch_url(api_url)
+    if resp["status"] != 200:
+        return None
+
+    try:
+        data = json.loads(resp["body"])
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    tweet = data.get("tweet")
+    if not tweet:
+        return None
+
+    author = tweet.get("author", {})
+    text = tweet.get("text", "") or ""
+
+    # Extract X Article content if present
+    x_article = None
+    article = tweet.get("article")
+    if article:
+        article_title = article.get("title", "")
+        blocks = article.get("content", {}).get("blocks", [])
+        article_text = "\n\n".join(
+            b.get("text", "") for b in blocks if b.get("text")
+        )
+
+        if article_text or article_title:
+            x_article = {
+                "url": f"https://x.com/i/article/{article.get('id', '')}",
+                "status": 200,
+                "title": article_title,
+                "description": article.get("preview_text", ""),
+                "image": "",
+                "markdown": article_text,
+            }
+            # If tweet text is empty or just a URL, use article title
+            if not text.strip() or re.match(r"^https?://\S+$", text.strip()):
+                text = article_title
+
+    # Extract media
+    media = []
+    media_data = tweet.get("media")
+    if media_data and isinstance(media_data, dict):
+        for m in media_data.get("all", []):
+            media.append({
+                "type": m.get("type", "photo"),
+                "url": m.get("url", ""),
+                "alt_text": m.get("altText", ""),
+            })
+
+    # Extract external URLs from text
+    linked_urls = []
+    urls_in_text = re.findall(r"https?://[^\s<>\"]+", text)
+    for u in urls_in_text:
+        u = u.rstrip(".,;:!?)")
+        if not re.match(r"https?://(?:www\.)?(?:x\.com|twitter\.com)/", u):
+            linked_urls.append({
+                "url": u,
+                "display_url": u,
+                "title": "",
+                "description": "",
+            })
+
+    result = {
+        "tweet_id": tweet_id,
+        "text": text,
+        "created_at": tweet.get("created_at", ""),
+        "author": {
+            "username": author.get("screen_name", username),
+            "name": author.get("name", ""),
+            "bio": author.get("description", ""),
+        },
+        "metrics": {
+            "replies": tweet.get("replies", 0),
+            "retweets": tweet.get("retweets", 0),
+            "likes": tweet.get("likes", 0),
+            "bookmarks": tweet.get("bookmarks", 0),
+            "views": tweet.get("views", 0),
+        },
+        "media": media,
+        "linked_urls": linked_urls,
+        "referenced_tweets": [],
+    }
+
+    if x_article:
+        result["_x_article"] = x_article
+
+    return result
 
 
 # --- Tweet Fetching via X API (optional, requires bearer token) ---
@@ -612,10 +723,26 @@ def scrape_url(url: str, crawl_links: bool = True, token: str = None) -> dict:
             # Free path: oEmbed (no API key needed)
             tweet_data = process_tweet_free(parsed["tweet_id"], parsed["username"], url)
 
+        # If oEmbed returned minimal content (just a URL), try fxtwitter for richer data
+        if tweet_data:
+            text = tweet_data.get("text", "").strip()
+            is_minimal = not text or re.match(r"^https?://\S+$", text)
+            if is_minimal:
+                fxt_data = process_tweet_fxtwitter(parsed["tweet_id"], parsed["username"])
+                if fxt_data and fxt_data.get("text", "").strip():
+                    tweet_data = fxt_data
+        else:
+            # oEmbed failed entirely, try fxtwitter
+            tweet_data = process_tweet_fxtwitter(parsed["tweet_id"], parsed["username"])
+
         if not tweet_data:
             raise ValueError(f"Could not fetch tweet. It may be deleted or from a private account.")
 
         result["tweet"] = tweet_data
+
+        # Add X Article content if available (from fxtwitter)
+        if tweet_data.get("_x_article"):
+            result["articles"].append(tweet_data.pop("_x_article"))
 
         # Crawl linked URLs within the tweet
         if crawl_links and tweet_data.get("linked_urls"):

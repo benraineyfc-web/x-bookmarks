@@ -21,6 +21,7 @@ All formats use stdlib only — zero external dependencies.
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -216,11 +217,22 @@ def extract_tweet_content(data: dict) -> dict:
 
     if tweet:
         author = f"@{tweet['author']['username']} ({tweet['author']['name']})"
-        title = _derive_title(tweet["text"])
         content = tweet["text"]
         source_url = data.get("source_url", "")
         date = tweet.get("created_at", datetime.now(timezone.utc).isoformat())
         metrics = tweet.get("metrics", {})
+
+        # If tweet content is just a URL, try to use article title/description
+        content_stripped = content.strip()
+        is_url_only = bool(re.match(r"^https?://\S+$", content_stripped))
+        if is_url_only and articles:
+            best = next((a for a in articles if a.get("title") and not a.get("error")), None)
+            if best:
+                content = best["title"]
+                if best.get("description"):
+                    content += f"\n\n{best['description']}"
+
+        title = _derive_title(content)
 
         attribution = f"**{tweet['author']['name']}** (@{tweet['author']['username']})"
         if tweet["author"].get("bio"):
@@ -278,15 +290,27 @@ def extract_tweet_content(data: dict) -> dict:
 
 def _derive_title(text: str) -> str:
     """Derive a title from tweet text (first sentence or first 80 chars)."""
-    # Take first sentence
+    clean = text.strip()
+    # If text is just a URL, use the domain/path as title
+    if re.match(r"^https?://\S+$", clean):
+        from urllib.parse import urlparse
+        parsed = urlparse(clean)
+        path = parsed.path.strip("/")
+        if path:
+            return path.rsplit("/", 1)[-1][:80] or parsed.netloc
+        return parsed.netloc
+    # Take first sentence (skip dots inside URLs)
     for delim in [".", "!", "?", "\n"]:
-        idx = text.find(delim)
+        idx = clean.find(delim)
         if 0 < idx < 120:
-            return text[:idx + 1].strip()
+            # Don't split on dots that are inside URLs
+            if delim == "." and re.match(r"^https?://", clean[:idx + 1]):
+                continue
+            return clean[:idx + 1].strip()
     # Fallback: first 80 chars
-    if len(text) > 80:
-        return text[:77].strip() + "..."
-    return text.strip()
+    if len(clean) > 80:
+        return clean[:77].strip() + "..."
+    return clean
 
 
 def _build_full_text(tweet_text: str, articles: list) -> str:
