@@ -333,8 +333,11 @@ def fill_markdown(fields: dict) -> str:
 
 
 def fill_sop(fields: dict, context: str = "") -> str:
-    content = fields["full_text"]
+    full = fields["full_text"]
     ctx_note = f"\n\n*User context: {context}*" if context else ""
+
+    scope_items, prereq_items = _extract_scope_and_prereqs(full)
+    financial = _extract_financial_lines(full)
 
     values = {
         **fields,
@@ -343,51 +346,83 @@ def fill_sop(fields: dict, context: str = "") -> str:
             f"> {_truncate(fields['content'], 300)}"
         ),
         "scope_items": (
-            "- [ ] *Define the teams/systems/processes this applies to*\n"
-            "- [ ] *Define the frequency of execution*\n"
-            "- [ ] *Define any prerequisites or dependencies*"
+            "\n".join(f"- {s}" for s in scope_items)
+            if scope_items
+            else "- *Define the teams/systems/processes this applies to*"
         ),
         "prerequisites": (
-            "- [ ] *List prerequisites extracted from the source content*\n"
-            "- [ ] *List tools, access, or knowledge required*"
+            "\n".join(f"- {s}" for s in prereq_items)
+            if prereq_items
+            else "- *List tools, access, or knowledge required*"
         ),
-        "procedure_steps": _extract_steps(content),
+        "procedure_steps": _format_steps(full),
         "outcomes": (
-            "- [ ] *Define expected results when this procedure is followed correctly*\n"
-            "- [ ] *Define metrics for measuring success*"
+            "\n".join(f"- {f}" for f in financial)
+            if financial
+            else "- *Define expected results when this procedure is followed correctly*"
         ),
         "notes": (
             f"- Original source: {fields['source_url']}\n"
             f"- Author: {fields['author']}\n"
-            "- [ ] *Add implementation notes, edge cases, exceptions*"
+            "- *Add implementation notes, edge cases, exceptions*"
         ),
     }
     return TEMPLATES["sop"].format(**values)
 
 
 def fill_pid(fields: dict, context: str = "") -> str:
+    full = fields["full_text"]
     ctx_note = f"\n\n*User context: {context}*" if context else ""
+
+    scope_items, prereqs = _extract_scope_and_prereqs(full)
+    steps = _extract_steps(full)
+    financial = _extract_financial_lines(full)
+    timeline = _extract_timeline_items(full)
+
+    # Build deliverables from action items
+    action_items = _extract_action_items(full)
+    deliverables_text = (
+        "\n".join(f"- {a}" for a in action_items[:8])
+        if action_items
+        else "- *List concrete deliverables*"
+    )
+
+    # Build objectives from thesis
+    thesis = _extract_thesis(full, 300)
+
+    # Build timeline table if we have milestones
+    if timeline:
+        timeline_rows = "| Phase | Description | Duration |\n|-------|-------------|----------|\n"
+        for phase, desc in timeline:
+            timeline_rows += f"| {phase} | {_truncate(desc, 80)} | TBD |\n"
+    else:
+        timeline_rows = (
+            "| Phase | Description | Duration |\n"
+            "|-------|-------------|----------|\n"
+            "| Discovery | Research and validate approach | TBD |\n"
+            "| Implementation | Execute core work | TBD |\n"
+            "| Review | Test and validate outcomes | TBD |\n"
+            "| Launch | Deploy and monitor | TBD |"
+        )
 
     values = {
         **fields,
         "overview": (
             f"Project inspired by content from {fields['author']}.{ctx_note}\n\n"
-            f"> {_truncate(fields['content'], 300)}"
+            f"> {_truncate(thesis, 400)}"
         ),
         "objectives": (
-            "- [ ] *Primary objective derived from the source content*\n"
-            "- [ ] *Secondary objectives*\n"
-            "- [ ] *Define measurable key results*"
+            "\n".join(f"- {f}" for f in financial[:5])
+            if financial
+            else "- *Define measurable key results from the source content*"
         ),
         "in_scope": (
-            "- [ ] *Define what's included in this project*\n"
-            "- [ ] *Define boundaries*"
+            "\n".join(f"- {s}" for s in scope_items[:5])
+            if scope_items
+            else "- *Define what's included in this project*"
         ),
-        "deliverables": (
-            "- [ ] *List concrete deliverables*\n"
-            "- [ ] *Define acceptance criteria for each*"
-        ),
-        "approach": _extract_steps(fields["full_text"]),
+        "deliverables": deliverables_text,
+        "approach": _format_steps(full),
         "risks": (
             "| Risk | Impact | Likelihood | Mitigation |\n"
             "|------|--------|------------|------------|\n"
@@ -395,39 +430,57 @@ def fill_pid(fields: dict, context: str = "") -> str:
             "| *Technical complexity* | TBD | TBD | TBD |"
         ),
         "success_criteria": (
-            "- [ ] *Define what success looks like*\n"
-            "- [ ] *Define measurable outcomes*\n"
-            "- [ ] *Define timeline constraints*"
+            "\n".join(f"- {f}" for f in financial[-5:])
+            if financial
+            else "- *Define what success looks like*"
         ),
     }
-    return TEMPLATES["pid"].format(**values)
+
+    # Override timeline in template
+    pid_output = TEMPLATES["pid"].format(**values)
+    # Replace default timeline table with extracted one
+    default_timeline = (
+        "| Phase | Description | Duration |\n"
+        "|-------|-------------|----------|\n"
+        "| Discovery | Research and validate approach | TBD |\n"
+        "| Implementation | Execute core work | TBD |\n"
+        "| Review | Test and validate outcomes | TBD |\n"
+        "| Launch | Deploy and monitor | TBD |"
+    )
+    if timeline:
+        pid_output = pid_output.replace(default_timeline, timeline_rows)
+    return pid_output
 
 
 def fill_concept(fields: dict, context: str = "") -> str:
+    full = fields["full_text"]
     ctx_note = f"\n\n*User context: {context}*" if context else ""
+
+    # Core idea: thesis from the article, not just the tweet text
+    thesis = _extract_thesis(full, 600)
+
+    # Actions: extracted from the content
+    action_items = _extract_action_items(full)
+    actions_text = (
+        "\n".join(f"- {a}" for a in action_items[:10])
+        if action_items
+        else "- *No explicit action items found — review source material below*"
+    )
 
     values = {
         **fields,
-        "core_idea": (
-            f"{fields['content']}{ctx_note}"
-        ),
-        "key_insights": (
-            _extract_insights(fields["full_text"])
-        ),
+        "core_idea": f"{thesis}{ctx_note}",
+        "key_insights": _extract_insights(full, exclude_title=fields.get("title", "")),
         "applications": (
-            "- [ ] *How does this apply to your current work?*\n"
-            "- [ ] *What existing processes could this improve?*\n"
-            "- [ ] *What new opportunities does this create?*"
+            "- *How does this apply to your current work?*\n"
+            "- *What existing processes could this improve?*\n"
+            "- *What new opportunities does this create?*"
         ),
-        "actions": (
-            "- [ ] *Immediate actions you can take*\n"
-            "- [ ] *Research or validation needed*\n"
-            "- [ ] *People to discuss this with*"
-        ),
+        "actions": actions_text,
         "open_questions": (
-            "- [ ] *What needs further investigation?*\n"
-            "- [ ] *What assumptions need validation?*\n"
-            "- [ ] *What are the unknowns?*"
+            "- *What needs further investigation?*\n"
+            "- *What assumptions need validation?*\n"
+            "- *What are the unknowns?*"
         ),
     }
     return TEMPLATES["concept"].format(**values)
@@ -435,72 +488,299 @@ def fill_concept(fields: dict, context: str = "") -> str:
 
 # --- Helpers ---
 
+# Words that signal promotional/CTA content (penalized in scoring)
+_CTA_PATTERNS = re.compile(
+    r"(check out|subscribe|follow me|join|sign up|click|free trending|daily\s*\.?\s*$)",
+    re.IGNORECASE,
+)
+
+# Words that signal substantive content (boosted in scoring)
+_INSIGHT_KEYWORDS = {
+    "key", "important", "strategy", "approach", "insight", "learn", "result",
+    "success", "fail", "grow", "build", "create", "improve", "optimize",
+    "scale", "revenue", "profit", "cost", "customer", "user", "product",
+    "system", "process", "framework", "model", "method", "principle",
+    "business", "niche", "vertical", "clients", "service", "playbook",
+    "opportunity", "workflow", "automate", "intelligence", "operating",
+}
+
+# Verbs that start actionable sentences
+_ACTION_VERBS = {
+    "pick", "choose", "select", "find", "create", "build", "make", "run",
+    "start", "launch", "deploy", "set", "turn", "record", "document",
+    "transcribe", "use", "implement", "define", "identify", "get", "grow",
+    "upsell", "charge", "land", "convert", "validate", "research",
+}
+
+
 def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len - 3].strip() + "..."
 
 
-def _extract_steps(text: str) -> str:
-    """Extract numbered or bulleted steps from text, or create placeholder steps."""
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences, handling URLs and abbreviations."""
+    # Split on sentence-ending punctuation followed by space+capital or newline
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z\n])", text)
+    sentences = []
+    for part in parts:
+        # Also split on double newlines (paragraph breaks)
+        for sub in part.split("\n\n"):
+            clean = sub.strip()
+            if clean:
+                sentences.append(clean)
+    return sentences
+
+
+def _get_paragraphs(text: str) -> list[str]:
+    """Split text into non-empty paragraphs."""
+    return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+
+
+def _extract_thesis(text: str, max_chars: int = 600) -> str:
+    """Extract the core thesis — first 2-3 substantial paragraphs."""
+    paragraphs = _get_paragraphs(text)
+    parts = []
+    total = 0
+    for p in paragraphs:
+        # Skip short headers, section labels, or CTA lines
+        if len(p) < 25 or _CTA_PATTERNS.search(p):
+            continue
+        # Skip lines that are just numbered steps (save for actions section)
+        if re.match(r"^\d+[.)]\s", p):
+            continue
+        parts.append(p)
+        total += len(p)
+        if total >= max_chars:
+            break
+    return "\n\n".join(parts) if parts else _truncate(text, max_chars)
+
+
+def _extract_steps(text: str) -> list[str]:
+    """Extract numbered, bulleted, and arrow-prefixed steps from text."""
     lines = text.split("\n")
     steps = []
 
     for line in lines:
         stripped = line.strip()
-        # Match numbered lines (1. 2. etc.) or bullet lines (- * etc.)
-        if stripped and (
-            len(stripped) > 5
-            and (stripped[0].isdigit() or stripped[0] in "-*")
-        ):
+        if not stripped or len(stripped) < 8:
+            continue
+        # Numbered: "1.", "2)", etc.
+        if re.match(r"^\d+[.)]\s+", stripped):
+            steps.append(stripped)
+        # Arrow: "→", "->", "=>"
+        elif stripped.startswith(("→ ", "-> ", "=> ")):
+            steps.append(stripped)
+        # Bullet: "- " or "* " (but not markdown horizontal rules)
+        elif re.match(r"^[-*]\s+\S", stripped) and len(stripped) > 10:
             steps.append(stripped)
 
-    if steps:
-        return "\n".join(f"  {s}" for s in steps[:20])
-
-    # No structured steps found — create scaffolding from content
-    return (
-        "**Steps extracted from source:**\n\n"
-        f"> {_truncate(text, 500)}\n\n"
-        "**Action items:**\n\n"
-        "1. [ ] *Analyze the above content and extract key steps*\n"
-        "2. [ ] *Validate steps against your specific context*\n"
-        "3. [ ] *Assign owners and timelines*\n"
-        "4. [ ] *Execute and track progress*"
-    )
+    return steps
 
 
-def _extract_insights(text: str) -> str:
+def _extract_action_items(text: str) -> list[str]:
+    """Extract actionable items: steps + imperative sentences."""
+    items = _extract_steps(text)
+
+    # Also pick up imperative sentences (start with action verb)
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped or len(stripped) < 15 or stripped in items:
+            continue
+        first_word = stripped.split()[0].rstrip(".,!:").lower()
+        if first_word in _ACTION_VERBS and not _CTA_PATTERNS.search(stripped):
+            items.append(stripped)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique = []
+    for item in items:
+        key = item.lower()[:60]
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique[:15]
+
+
+def _extract_insights(text: str, exclude_title: str = "") -> str:
     """Extract key insight-like sentences from text."""
-    sentences = []
-    for delim_pattern in [". ", "! ", "? "]:
-        parts = text.split(delim_pattern)
-        for part in parts:
-            clean = part.strip()
-            if len(clean) > 30 and len(clean) < 300:
-                sentences.append(clean)
+    paragraphs = _get_paragraphs(text)
+    candidates = []
+    title_lower = exclude_title.lower().strip() if exclude_title else ""
+    # Skip paragraphs that overlap with the thesis (first ~600 chars shown in Core Idea)
+    thesis_text = text[:600].lower()
 
-    # Pick up to 5 most interesting-looking sentences
-    # (heuristic: longer sentences with keywords tend to be more insightful)
-    insight_keywords = {"key", "important", "strategy", "approach", "insight",
-                        "learn", "result", "success", "fail", "grow", "build",
-                        "create", "improve", "optimize", "scale", "revenue",
-                        "profit", "cost", "customer", "user", "product", "system",
-                        "process", "framework", "model", "method", "principle"}
+    for para in paragraphs:
+        # Skip very short or very long paragraphs
+        if len(para) < 30 or len(para) > 500:
+            continue
+        # Skip the title itself or near-duplicates of it
+        if title_lower and para.lower().strip().startswith(title_lower[:40]):
+            continue
+        # Skip paragraphs already shown in the thesis/core idea section
+        if para.lower().strip()[:50] in thesis_text:
+            continue
+        # Skip CTAs and promotional
+        if _CTA_PATTERNS.search(para):
+            continue
+        # Skip pure numbered steps (those go in actions)
+        if re.match(r"^\d+[.)]\s", para):
+            continue
+        # Skip arrow-only items
+        if para.startswith(("→ ", "-> ")):
+            continue
+        candidates.append(para)
 
+    # Score each candidate
     scored = []
-    for s in sentences:
+    seen_prefixes = set()
+    for s in candidates:
+        # Deduplicate by first 50 chars
+        prefix = s.lower()[:50]
+        if prefix in seen_prefixes:
+            continue
+        seen_prefixes.add(prefix)
+
         words = set(s.lower().split())
-        score = len(words & insight_keywords) + (len(s) / 100)
+        score = len(words & _INSIGHT_KEYWORDS) * 2
+
+        # Boost contrasts ("not X, but Y" / "You're not ... You're ...")
+        if re.search(r"\bnot\b.{3,30}\b(but|instead|you're)\b", s, re.I):
+            score += 4
+        # Boost financial data
+        if re.search(r"\$[\d,]+", s):
+            score += 3
+        # Boost framework/model statements
+        if re.search(r"(the playbook|the idea|the math|the money|why it works)", s, re.I):
+            score += 3
+        # Boost strong claims
+        if re.search(r"(most businesses|most people|the key|this is where)", s, re.I):
+            score += 2
+        # Slight length bonus (prefer meatier sentences)
+        score += min(len(s) / 150, 2)
+        # Penalize promotional
+        if _CTA_PATTERNS.search(s):
+            score -= 10
+
         scored.append((score, s))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:5]
+    top = scored[:6]
 
     if top:
         return "\n".join(f"- {s}" for _, s in top)
 
-    return "- [ ] *Extract key insights from the source material below*"
+    return "- *No key insights could be extracted automatically.*"
+
+
+def _extract_financial_lines(text: str) -> list[str]:
+    """Extract lines with actual pricing, revenue projections, or metric breakdowns."""
+    lines = text.split("\n")
+    results = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or len(stripped) < 15:
+            continue
+        if _CTA_PATTERNS.search(stripped):
+            continue
+        # Count dollar amounts in the line — require concrete pricing, not passing mentions
+        dollar_count = len(re.findall(r"\$[\d,]+", stripped))
+        has_rate = bool(re.search(r"\$/?(month|mo|yr|year|engagement|week)\b", stripped, re.I))
+        has_projection = bool(re.search(r"(months?\s+[\d–\-]+|total\s+by|=\s*\$)", stripped, re.I))
+        # Only include lines with multiple dollar amounts, pricing rates, or projections
+        if dollar_count >= 2 or has_rate or (dollar_count >= 1 and has_projection):
+            results.append(stripped)
+    return results[:12]
+
+
+def _extract_timeline_items(text: str) -> list[tuple[str, str]]:
+    """Extract timeline/milestone items like 'Months 1-3: ...'."""
+    lines = text.split("\n")
+    items = []
+    for line in lines:
+        stripped = line.strip()
+        m = re.match(
+            r"(Months?\s+[\d–\-]+|Weeks?\s+[\d–\-]+|Phase\s+\d+|Q[1-4])"
+            r"[:\s]+(.+)",
+            stripped, re.I,
+        )
+        if m:
+            items.append((m.group(1).strip(), m.group(2).strip()))
+    return items
+
+
+def _extract_scope_and_prereqs(text: str) -> tuple[list[str], list[str]]:
+    """Extract scope items (who/what this applies to) and prerequisites (tools/knowledge)."""
+    scope = []
+    prereqs = []
+
+    # Skip first non-empty line (usually the title repeated)
+    first_line = ""
+    for line in text.split("\n"):
+        if line.strip():
+            first_line = line.strip().lower()
+            break
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        # Skip very short, very long, or CTA lines
+        if not stripped or len(stripped) < 20 or len(stripped) > 150:
+            continue
+        if _CTA_PATTERNS.search(stripped):
+            continue
+        # Skip the title line
+        if first_line and stripped.lower() == first_line:
+            continue
+
+        # Scope: lines describing target audience, verticals, or who this applies to
+        # Must mention a specific role/audience AND have qualifying context
+        if re.search(r"\b(teams?\s+at|agents?\s+at|employees?\s+(on|at|in)|clients?\s+in)\b", stripped, re.I):
+            scope.append(stripped)
+        elif re.search(r"\b(dealership|brokerage|solopreneur|vertical|niche)\b", stripped, re.I):
+            scope.append(stripped)
+
+        # Prerequisites: lines describing tools to use or things needed
+        # Must be actionable (mentions using a specific tool/platform)
+        if re.search(r"\b(with\s+(Wispr|Claude|Zapier|n8n)|using\s+\w+|requires?\s+\w+|need\s+\w+)\b", stripped, re.I):
+            prereqs.append(stripped)
+        elif re.search(r"\b(MCP integrations?|Claude (Projects|skills|memory)|connectors)\b", stripped, re.I):
+            prereqs.append(stripped)
+
+    return _dedupe(scope)[:6], _dedupe(prereqs)[:6]
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    """Remove near-duplicate items."""
+    seen = set()
+    unique = []
+    for item in items:
+        key = item.lower()[:50]
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
+def _format_steps(text: str) -> str:
+    """Extract and format all procedural steps and action items."""
+    # Always use the full action items list (steps + imperative sentences)
+    # to capture the complete playbook, not just arrows or numbered items
+    actions = _extract_action_items(text)
+    if actions:
+        numbered = []
+        for i, a in enumerate(actions[:15], 1):
+            # Strip existing numbering/arrows for clean renumbering
+            clean = re.sub(r"^(\d+[.)]\s+|→\s*|->?\s*|=>\s*|-\s+|\*\s+)", "", a)
+            numbered.append(f"{i}. {clean}")
+        return "\n".join(numbered)
+
+    # Last resort: content summary
+    return (
+        "**From source material:**\n\n"
+        f"> {_truncate(text, 500)}\n\n"
+        "*Review the source material above and extract concrete steps.*"
+    )
 
 
 # --- Main ---
