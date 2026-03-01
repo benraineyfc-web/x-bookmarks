@@ -2,14 +2,14 @@
 # Deploy: flyctl launch / flyctl deploy
 # Docs: https://fly.io/docs/reference/configuration/
 
-app = "x-content-scraper"
+app = "x-bookmarks"
 primary_region = "lhr"
 
 [build]
   dockerfile = "web/api/Dockerfile"
 
 [env]
-  APP_URL = "https://x-content-scraper.fly.dev"
+  APP_URL = "https://x-bookmarks.fly.dev"
 
 [http_service]
   internal_port = 8000
