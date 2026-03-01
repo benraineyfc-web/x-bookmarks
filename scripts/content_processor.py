@@ -12,9 +12,13 @@ Usage:
 
 Formats:
     markdown  — Clean markdown note (default)
-    sop       — Business Standard Operating Procedure
-    pid       — Project Initiation Document
-    concept   — Concept document (ideas, insights, applications)
+    sop       — Business Standard Operating Procedure (AI prompt)
+    pid       — Project Initiation Document (AI prompt)
+    concept   — Concept document (AI prompt)
+
+For SOP/PID/Concept, the tool generates a ready-to-paste prompt that you
+copy into Claude, ChatGPT, or Gemini to get a high-quality formatted document.
+The markdown format renders directly.
 
 All formats use stdlib only — zero external dependencies.
 """
@@ -206,6 +210,140 @@ Before executing this procedure, ensure:
 {linked_content}
 """,
 }
+
+# --- AI Prompt Templates ---
+# These are pasted into Claude / ChatGPT / Gemini to generate high-quality docs.
+
+AI_PROMPTS = {
+    "sop": """\
+Create a **Standard Operating Procedure (SOP)** from the source material below.
+
+---
+
+## Source Material
+
+**Author:** {author}
+**Original URL:** {source_url}
+**Date:** {date}
+
+### Post/Tweet
+
+{content}
+
+### Linked Article Content
+
+{linked_content}
+
+{context_block}
+
+---
+
+## Output Requirements
+
+Generate a professional SOP in **Markdown** format with these sections:
+
+1. **Purpose** — What this procedure achieves and why it matters (1-2 paragraphs)
+2. **Scope** — Who this applies to: teams, roles, industries, company stages
+3. **Prerequisites** — Specific tools, accounts, access, skills, or knowledge needed before starting
+4. **Procedure** — Detailed, numbered step-by-step instructions extracted from the content. Be specific — include tool names, exact actions, and any metrics or benchmarks mentioned
+5. **Expected Outcomes** — Concrete results when the procedure is followed correctly. Include any revenue figures, timelines, or KPIs from the source
+6. **Notes & Caveats** — Edge cases, common mistakes, dependencies, and things to watch out for
+
+**Rules:**
+- Extract SPECIFIC steps and details from the source — no generic placeholders
+- Include any tools, platforms, pricing, or services mentioned by name
+- Include any numbers, costs, timelines, or metrics mentioned
+- If a section lacks source material, briefly note what additional info is needed
+- Keep the tone professional but practical
+""",
+
+    "pid": """\
+Create a **Project Initiation Document (PID)** from the source material below.
+
+---
+
+## Source Material
+
+**Author:** {author}
+**Original URL:** {source_url}
+**Date:** {date}
+
+### Post/Tweet
+
+{content}
+
+### Linked Article Content
+
+{linked_content}
+
+{context_block}
+
+---
+
+## Output Requirements
+
+Generate a professional PID in **Markdown** format with these sections:
+
+1. **Project Overview** — What this project is about and the opportunity/problem it addresses (2-3 paragraphs)
+2. **Objectives** — 3-5 measurable objectives or key results, using specific numbers from the source where available
+3. **Scope & Deliverables** — What's in scope, what's out of scope, and a list of concrete deliverables
+4. **Key Stakeholders** — Roles and responsibilities table (infer from the content)
+5. **Approach & Methodology** — How to execute, broken into phases with specific actions
+6. **Timeline & Milestones** — Table with phases, descriptions, and estimated durations
+7. **Risks & Mitigations** — Table identifying 3-5 risks with impact, likelihood, and mitigation strategies
+8. **Success Criteria** — How to measure whether the project succeeded, with specific metrics
+
+**Rules:**
+- Extract REAL data from the source — revenue targets, costs, timelines, tools
+- Use Markdown tables for stakeholders, timeline, and risks sections
+- Be specific about the approach — reference actual methods/tools from the content
+- If information is missing for a section, note what needs to be defined
+- Treat the source content as a brief/pitch that needs to be structured into a plan
+""",
+
+    "concept": """\
+Create a **Concept Note** from the source material below.
+
+---
+
+## Source Material
+
+**Author:** {author}
+**Original URL:** {source_url}
+**Date:** {date}
+
+### Post/Tweet
+
+{content}
+
+### Linked Article Content
+
+{linked_content}
+
+{context_block}
+
+---
+
+## Output Requirements
+
+Generate an insightful Concept Note in **Markdown** format with these sections:
+
+1. **Core Idea** — The central thesis or insight in 2-3 clear paragraphs. What is the author really saying?
+2. **Key Insights** — 5-8 bullet points capturing the most important, non-obvious takeaways
+3. **How This Applies** — 3-5 concrete ways this could be applied to real work. Be specific about use cases, industries, or scenarios
+4. **Potential Actions** — Numbered list of immediate next steps someone could take to act on this
+5. **Open Questions** — 3-5 questions that need further investigation or validation before acting
+6. **Related Concepts** — Other frameworks, methodologies, or ideas that connect to this (if apparent)
+
+**Rules:**
+- Focus on INSIGHT over summary — what's the non-obvious takeaway?
+- Extract the author's actual arguments, not just topic labels
+- For "How This Applies", imagine you're advising a team that just read this — what would you tell them?
+- Actions should be specific and time-bound where possible
+- Keep the tone thoughtful and analytical
+""",
+}
+
 
 # --- Content Extraction ---
 
@@ -780,6 +918,30 @@ def _format_steps(text: str) -> str:
         "**From source material:**\n\n"
         f"> {_truncate(text, 500)}\n\n"
         "*Review the source material above and extract concrete steps.*"
+    )
+
+
+# --- AI Prompt Generation ---
+
+def generate_prompt(data: dict, fmt: str, context: str = "") -> str:
+    """Generate a ready-to-paste AI prompt for SOP/PID/Concept formats.
+
+    The prompt embeds the scraped content + format-specific instructions.
+    User copies it into Claude, ChatGPT, or Gemini to get the final document.
+    """
+    if fmt not in AI_PROMPTS:
+        raise ValueError(f"No AI prompt template for format: {fmt}")
+
+    fields = extract_tweet_content(data)
+    context_block = f"### Additional Context\n\n{context}" if context else ""
+
+    return AI_PROMPTS[fmt].format(
+        author=fields["author"],
+        source_url=fields["source_url"],
+        date=fields["date"],
+        content=fields["content"],
+        linked_content=fields["linked_content"],
+        context_block=context_block,
     )
 
 

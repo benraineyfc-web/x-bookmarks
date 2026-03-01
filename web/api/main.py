@@ -24,7 +24,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from x_content_scraper import scrape_url, format_as_markdown, parse_x_url
-from content_processor import process as process_content
+from content_processor import process as process_content, generate_prompt
 
 # --- Config ---
 
@@ -78,8 +78,26 @@ async def api_process(req: ProcessRequest):
 async def api_scrape_and_process(req: ScrapeAndProcessRequest):
     try:
         data = scrape_url(req.url, crawl_links=req.crawl_links, token=X_API_BEARER_TOKEN or None)
-        document = process_content(data, req.format, req.context)
-        return {"document": document, "format": req.format, "source": data}
+        fmt = req.format
+
+        # For SOP/PID/Concept: generate a ready-to-paste AI prompt
+        # For markdown: generate the document directly
+        if fmt in ("sop", "pid", "concept"):
+            prompt = generate_prompt(data, fmt, req.context)
+            return {
+                "document": prompt,
+                "format": fmt,
+                "type": "prompt",
+                "source": data,
+            }
+        else:
+            document = process_content(data, fmt, req.context)
+            return {
+                "document": document,
+                "format": fmt,
+                "type": "document",
+                "source": data,
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -125,6 +143,16 @@ details{margin-top:1rem}
 summary{color:#888;cursor:pointer;font-size:.85rem}
 pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;overflow:auto;max-height:40vh;font-size:.75rem;color:#888;margin-top:.5rem}
 .footer{margin-top:3rem;text-align:center;color:#555;font-size:.75rem}
+.prompt-banner{margin:.75rem 0;padding:.75rem 1rem;background:#1a2332;border:1px solid #1d4ed8;border-radius:8px;display:flex;align-items:flex-start;gap:.75rem}
+.prompt-banner .icon{font-size:1.4rem;flex-shrink:0;line-height:1.2}
+.prompt-banner .text{flex:1;font-size:.85rem;line-height:1.5;color:#93c5fd}
+.prompt-banner .text strong{color:#bfdbfe}
+.copy-prompt-btn{width:100%;padding:.75rem;font-size:1rem;font-weight:600;background:#7c3aed;color:#fff;border:none;border-radius:8px;cursor:pointer;margin:.5rem 0;transition:all .15s}
+.copy-prompt-btn:hover{background:#6d28d9}
+.copy-prompt-btn.copied{background:#059669}
+.paste-links{display:flex;gap:1rem;justify-content:center;margin:.5rem 0}
+.paste-links a{color:#888;font-size:.8rem;text-decoration:none;border-bottom:1px dashed #555}
+.paste-links a:hover{color:#bbb}
 @media(max-width:480px){.formats{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -137,9 +165,9 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
     <input type="url" id="url" placeholder="Paste an X/Twitter URL or article link..." required>
     <div class="formats" id="formats">
       <div class="fmt active" data-f="markdown">Markdown<small>Clean reference note</small></div>
-      <div class="fmt" data-f="sop">SOP<small>Standard Operating Procedure</small></div>
-      <div class="fmt" data-f="pid">PID<small>Project Initiation Document</small></div>
-      <div class="fmt" data-f="concept">Concept<small>Key insights &amp; action items</small></div>
+      <div class="fmt" data-f="sop">SOP<small>AI prompt &rarr; Claude/GPT</small></div>
+      <div class="fmt" data-f="pid">PID<small>AI prompt &rarr; Claude/GPT</small></div>
+      <div class="fmt" data-f="concept">Concept<small>AI prompt &rarr; Claude/GPT</small></div>
     </div>
     <div id="ctx-wrap" style="display:none">
       <button type="button" class="ctx-toggle" id="ctx-toggle">+ Add context (optional)</button>
@@ -151,6 +179,23 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
   <div class="error" id="error" style="display:none"></div>
 
   <div id="result-wrap" style="display:none">
+    <!-- Prompt mode banner (SOP/PID/Concept) -->
+    <div id="prompt-mode" style="display:none">
+      <div class="prompt-banner">
+        <span class="icon">&#9889;</span>
+        <div class="text">
+          <strong>Your AI prompt is ready.</strong> It includes all the scraped content plus formatting instructions.
+          Copy it and paste into your AI assistant to generate the document.
+        </div>
+      </div>
+      <button class="copy-prompt-btn" id="copy-prompt-btn">Copy Prompt to Clipboard</button>
+      <div class="paste-links">
+        <a href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude</a>
+        <a href="https://chatgpt.com" target="_blank" rel="noopener">Open ChatGPT</a>
+        <a href="https://gemini.google.com" target="_blank" rel="noopener">Open Gemini</a>
+      </div>
+    </div>
+    <!-- Standard header (always shown) -->
     <div class="result-header">
       <h2 id="result-title">Result</h2>
       <div class="action-btns">
@@ -172,7 +217,7 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
 <script>
 (function(){
   const $ = s => document.querySelector(s);
-  let fmt = 'markdown', rawData = null;
+  let fmt = 'markdown', rawData = null, resultType = 'document';
 
   // Format picker
   $('#formats').addEventListener('click',e=>{
@@ -191,6 +236,14 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
     $('#ctx').focus();
   });
 
+  // Copy helper
+  function copyText(text, btn, originalLabel) {
+    navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent = originalLabel; btn.classList.remove('copied'); }, 2000);
+  }
+
   // Submit
   $('#form').addEventListener('submit', async e=>{
     e.preventDefault();
@@ -208,10 +261,23 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
       if(!res.ok){const e=await res.json().catch(()=>({detail:res.statusText}));throw new Error(e.detail||'HTTP '+res.status);}
       const data = await res.json();
       rawData = data.source;
+      resultType = data.type || 'document';
+
       const labels = {markdown:'Markdown',sop:'SOP',pid:'PID',concept:'Concept'};
-      $('#result-title').textContent = 'Result ('+labels[fmt]+')';
+
+      // Show/hide prompt mode UI
+      const isPrompt = resultType === 'prompt';
+      $('#prompt-mode').style.display = isPrompt ? '' : 'none';
+      $('#result-title').textContent = isPrompt
+        ? 'AI Prompt (' + labels[fmt] + ')'
+        : 'Result (' + labels[fmt] + ')';
+      $('#copy-btn').textContent = isPrompt ? 'Copy' : 'Copy';
       $('#output').textContent = data.document;
       $('#result-wrap').style.display = '';
+
+      // Auto-scroll to results
+      $('#result-wrap').scrollIntoView({behavior:'smooth',block:'start'});
+
       if(rawData){ $('#raw-output').textContent = JSON.stringify(rawData,null,2); $('#raw-wrap').style.display=''; }
     } catch(err){
       $('#error').textContent = err.message || 'Something went wrong';
@@ -221,11 +287,14 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
     }
   });
 
-  // Copy
+  // Copy prompt (big button)
+  $('#copy-prompt-btn').addEventListener('click',()=>{
+    copyText($('#output').textContent, $('#copy-prompt-btn'), 'Copy Prompt to Clipboard');
+  });
+
+  // Copy (small button)
   $('#copy-btn').addEventListener('click',()=>{
-    navigator.clipboard.writeText($('#output').textContent);
-    $('#copy-btn').textContent='Copied!'; $('#copy-btn').classList.add('copied');
-    setTimeout(()=>{$('#copy-btn').textContent='Copy';$('#copy-btn').classList.remove('copied');},2000);
+    copyText($('#output').textContent, $('#copy-btn'), 'Copy');
   });
 
   // Download
