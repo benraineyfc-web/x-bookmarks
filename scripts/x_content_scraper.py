@@ -449,11 +449,13 @@ def process_tweet_free(tweet_id: str, username: str, tweet_url: str) -> dict | N
         if original != resolved and original in text:
             text = text.replace(original, resolved)
 
-    # Build linked_urls, excluding X/Twitter self-links
+    # Build linked_urls, excluding X/Twitter self-links and media URLs
     linked_urls = []
     for link in parser.links:
         resolved = resolved_map.get(link, link)
         if re.match(r"https?://(?:www\.)?(?:x\.com|twitter\.com)/", resolved):
+            continue
+        if _is_media_url(resolved):
             continue
         linked_urls.append({
             "url": resolved,
@@ -759,8 +761,30 @@ def scrape_url(url: str, crawl_links: bool = True, token: str = None) -> dict:
     return result
 
 
+# Media/image hosts that should NOT be crawled as articles
+_MEDIA_HOSTS = {
+    "pic.twitter.com", "pbs.twimg.com", "video.twimg.com",
+    "abs.twimg.com", "ton.twimg.com",
+    "instagram.com", "www.instagram.com",
+    "i.imgur.com", "imgur.com",
+}
+
+
+def _is_media_url(url: str) -> bool:
+    """Check if a URL points to a media/image host (not a real article)."""
+    try:
+        host = urllib.parse.urlparse(url).hostname or ""
+        return host in _MEDIA_HOSTS
+    except Exception:
+        return False
+
+
 def scrape_article(url: str) -> dict | None:
     """Fetch and extract content from an article URL."""
+    # Skip media URLs — they're images/videos, not articles
+    if _is_media_url(url):
+        return None
+
     resp = fetch_url(url)
     if resp["status"] != 200:
         return {
@@ -774,7 +798,29 @@ def scrape_article(url: str) -> dict | None:
 
     html = resp["body"]
     metadata = extract_metadata(html)
-    markdown = html_to_markdown(html)
+
+    # Use trafilatura for high-quality content extraction (strips boilerplate,
+    # nav, footers, ads — returns just the article text)
+    markdown = ""
+    try:
+        import trafilatura
+        extracted = trafilatura.extract(
+            html,
+            include_links=True,
+            include_formatting=True,
+            include_images=False,
+            include_tables=True,
+            favor_recall=True,
+            output_format="txt",
+        )
+        if extracted and len(extracted.strip()) > 50:
+            markdown = extracted
+    except ImportError:
+        pass
+
+    # Fallback: basic HTML-to-markdown if trafilatura unavailable or returned nothing
+    if not markdown:
+        markdown = html_to_markdown(html)
 
     # Truncate extremely long content (>50k chars)
     if len(markdown) > 50000:
