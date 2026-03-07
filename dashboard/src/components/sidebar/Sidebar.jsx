@@ -10,23 +10,31 @@ import {
   DrawerContent,
   DrawerCloseButton,
   DrawerBody,
+  Divider,
 } from "@chakra-ui/react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   MdDashboard,
   MdBookmarks,
   MdFileUpload,
-  MdShare,
+  MdDescription,
   MdLabel,
   MdFolder,
+  MdCategory,
+  MdStar,
 } from "react-icons/md";
 
-const links = [
+const mainLinks = [
   { name: "Dashboard", path: "/", icon: MdDashboard },
   { name: "Bookmarks", path: "/bookmarks", icon: MdBookmarks },
+  { name: "Categories", path: "/categories", icon: MdCategory },
   { name: "Collections", path: "/collections", icon: MdFolder },
+  { name: "Favorites", path: "/bookmarks?favorites=true", icon: MdStar },
+];
+
+const toolLinks = [
   { name: "Import", path: "/import", icon: MdFileUpload },
-  { name: "Export to Claude", path: "/export", icon: MdShare },
+  { name: "Generate Docs", path: "/export", icon: MdDescription },
   { name: "Tags", path: "/tags", icon: MdLabel },
 ];
 
@@ -36,6 +44,14 @@ function SidebarContent() {
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const textInactive = useColorModeValue("secondaryGray.600", "secondaryGray.600");
   const brandColor = useColorModeValue("brand.500", "brand.400");
+  const dividerColor = useColorModeValue("gray.200", "whiteAlpha.100");
+
+  const isActive = (path) => {
+    if (path.includes("?")) {
+      return location.pathname + location.search === path;
+    }
+    return location.pathname === path;
+  };
 
   return (
     <Flex direction="column" h="100%" pt="25px" px="16px" borderRadius="30px">
@@ -50,36 +66,54 @@ function SidebarContent() {
         </Text>
       </Flex>
 
-      <VStack spacing="4px" align="stretch">
-        {links.map((link) => {
-          const isActive = location.pathname === link.path;
+      <Text fontSize="xs" fontWeight="700" color={textInactive} px="16px" mb="8px" textTransform="uppercase" letterSpacing="1px">
+        Navigate
+      </Text>
+      <VStack spacing="4px" align="stretch" mb="20px">
+        {mainLinks.map((link) => {
+          const active = isActive(link.path);
           return (
             <NavLink key={link.path} to={link.path}>
               <Flex
                 align="center"
                 p="10px 16px"
                 borderRadius="16px"
-                bg={isActive ? bgActive : "transparent"}
-                boxShadow={
-                  isActive
-                    ? "0px 3.5px 5.5px rgba(0, 0, 0, 0.02)"
-                    : "none"
-                }
-                _hover={{ bg: isActive ? bgActive : "whiteAlpha.100" }}
+                bg={active ? bgActive : "transparent"}
+                boxShadow={active ? "0px 3.5px 5.5px rgba(0, 0, 0, 0.02)" : "none"}
+                _hover={{ bg: active ? bgActive : useColorModeValue("gray.50", "whiteAlpha.100") }}
                 transition="all 0.2s"
               >
-                <Icon
-                  as={link.icon}
-                  w="20px"
-                  h="20px"
-                  color={isActive ? brandColor : textInactive}
-                  mr="12px"
-                />
-                <Text
-                  fontSize="sm"
-                  fontWeight={isActive ? "700" : "500"}
-                  color={isActive ? textColor : textInactive}
-                >
+                <Icon as={link.icon} w="20px" h="20px" color={active ? brandColor : textInactive} mr="12px" />
+                <Text fontSize="sm" fontWeight={active ? "700" : "500"} color={active ? textColor : textInactive}>
+                  {link.name}
+                </Text>
+              </Flex>
+            </NavLink>
+          );
+        })}
+      </VStack>
+
+      <Divider borderColor={dividerColor} mb="16px" />
+
+      <Text fontSize="xs" fontWeight="700" color={textInactive} px="16px" mb="8px" textTransform="uppercase" letterSpacing="1px">
+        Tools
+      </Text>
+      <VStack spacing="4px" align="stretch">
+        {toolLinks.map((link) => {
+          const active = isActive(link.path);
+          return (
+            <NavLink key={link.path} to={link.path}>
+              <Flex
+                align="center"
+                p="10px 16px"
+                borderRadius="16px"
+                bg={active ? bgActive : "transparent"}
+                boxShadow={active ? "0px 3.5px 5.5px rgba(0, 0, 0, 0.02)" : "none"}
+                _hover={{ bg: active ? bgActive : useColorModeValue("gray.50", "whiteAlpha.100") }}
+                transition="all 0.2s"
+              >
+                <Icon as={link.icon} w="20px" h="20px" color={active ? brandColor : textInactive} mr="12px" />
+                <Text fontSize="sm" fontWeight={active ? "700" : "500"} color={active ? textColor : textInactive}>
                   {link.name}
                 </Text>
               </Flex>
@@ -113,7 +147,7 @@ export default function Sidebar({ isOpen, onClose }) {
       <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
         <DrawerOverlay />
         <DrawerContent bg={sidebarBg} maxW="280px">
-          <DrawerCloseButton color="white" />
+          <DrawerCloseButton color={useColorModeValue("gray.600", "white")} />
           <DrawerBody p="0">
             <SidebarContent />
           </DrawerBody>

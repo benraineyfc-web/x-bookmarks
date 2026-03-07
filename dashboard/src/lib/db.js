@@ -10,11 +10,28 @@ db.version(1).stores({
   collectionItems: "++id, collectionId, bookmarkId",
 });
 
+db.version(2).stores({
+  bookmarks:
+    "id, author_username, created_at, *tags, *categories, importedAt, favorite",
+  tags: "++id, &name, color",
+  collections: "++id, name, createdAt",
+  collectionItems: "++id, collectionId, bookmarkId",
+}).upgrade((tx) => {
+  return tx.table("bookmarks").toCollection().modify((bm) => {
+    if (!bm.categories) bm.categories = [];
+    if (bm.favorite === undefined) bm.favorite = false;
+    if (!bm.actionItems) bm.actionItems = [];
+  });
+});
+
 /**
  * Import normalized bookmarks into IndexedDB.
  * Skips duplicates by ID. Returns { added, skipped }.
  */
 export async function importBookmarks(normalizedBookmarks, autoTags = []) {
+  // Lazy import to avoid circular dependency
+  const { categorizeBookmark, extractActionItems } = await import("./categorize.js");
+
   let added = 0;
   let skipped = 0;
   const now = new Date().toISOString();
@@ -26,9 +43,14 @@ export async function importBookmarks(normalizedBookmarks, autoTags = []) {
         skipped++;
         continue;
       }
+      const categories = categorizeBookmark(bm);
+      const actionItems = extractActionItems(bm);
       await db.bookmarks.put({
         ...bm,
         tags: autoTags,
+        categories,
+        actionItems,
+        favorite: false,
         importedAt: now,
         notes: "",
       });
@@ -37,6 +59,26 @@ export async function importBookmarks(normalizedBookmarks, autoTags = []) {
   });
 
   return { added, skipped };
+}
+
+/**
+ * Re-categorize all existing bookmarks (useful after import or when categories are updated)
+ */
+export async function recategorizeAll() {
+  const { categorizeBookmark, extractActionItems } = await import("./categorize.js");
+  const all = await db.bookmarks.toArray();
+  let updated = 0;
+
+  await db.transaction("rw", db.bookmarks, async () => {
+    for (const bm of all) {
+      const categories = categorizeBookmark(bm);
+      const actionItems = extractActionItems(bm);
+      await db.bookmarks.update(bm.id, { categories, actionItems });
+      updated++;
+    }
+  });
+
+  return updated;
 }
 
 /**

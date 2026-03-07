@@ -17,6 +17,9 @@ import {
   NumberIncrementStepper,
   NumberDecrementStepper,
   Select,
+  Tabs,
+  TabList,
+  Tab,
 } from "@chakra-ui/react";
 import { MdContentCopy, MdDownload, MdArrowForward } from "react-icons/md";
 import { useOutletContext, useLocation } from "react-router-dom";
@@ -24,6 +27,8 @@ import Navbar from "../components/navbar/Navbar";
 import Card from "../components/card/Card";
 import { db } from "../lib/db";
 import { promptTemplates, generatePrompt } from "../lib/prompts";
+
+const TEMPLATE_CATEGORIES = ["All", "Product", "Business", "Technical", "Marketing", "Operations", "Research", "AI"];
 
 export default function Export() {
   const { onOpenSidebar } = useOutletContext();
@@ -36,6 +41,7 @@ export default function Export() {
   const [generatedPrompt, setGeneratedPrompt] = useState("");
   const [limit, setLimit] = useState(20);
   const [sortExportBy, setSortExportBy] = useState("likes-desc");
+  const [filterCat, setFilterCat] = useState("All");
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
@@ -46,8 +52,6 @@ export default function Export() {
     async function load() {
       const all = await db.bookmarks.toArray();
       setBookmarks(all);
-
-      // Pre-select if coming from bookmarks page
       if (location.state?.selectedIds) {
         setSelectedIds(new Set(location.state.selectedIds));
       }
@@ -60,7 +64,6 @@ export default function Export() {
       ? bookmarks.filter((bm) => selectedIds.has(bm.id))
       : bookmarks;
 
-    // Sort
     const [field, dir] = sortExportBy.split("-");
     pool = [...pool].sort((a, b) => {
       const va = a[field] || 0;
@@ -90,27 +93,19 @@ export default function Export() {
         position: "top",
       });
     } catch {
-      // Fallback
       const ta = document.createElement("textarea");
       ta.value = generatedPrompt;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
       ta.remove();
-      toast({
-        title: "Copied!",
-        status: "success",
-        duration: 2000,
-        position: "top",
-      });
+      toast({ title: "Copied!", status: "success", duration: 2000, position: "top" });
     }
   };
 
   const downloadJSON = () => {
     const exportBms = getExportBookmarks();
-    const blob = new Blob([JSON.stringify(exportBms, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(exportBms, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -130,9 +125,13 @@ export default function Export() {
     URL.revokeObjectURL(url);
   };
 
+  const filteredTemplates = Object.entries(promptTemplates).filter(
+    ([, tmpl]) => filterCat === "All" || tmpl.category === filterCat
+  );
+
   return (
     <Box>
-      <Navbar onOpen={onOpenSidebar} title="Export to Claude" />
+      <Navbar onOpen={onOpenSidebar} title="Generate Documents" />
 
       {/* Config */}
       <Card mb="20px">
@@ -203,12 +202,28 @@ export default function Export() {
         </HStack>
       </Card>
 
-      {/* Prompt Templates */}
+      {/* Template category tabs */}
       <Text fontSize="sm" fontWeight="700" color={textColor} mb="12px">
-        Choose a Prompt Template
+        Choose a Document Template
       </Text>
+      <Tabs variant="soft-rounded" colorScheme="brand" mb="16px" size="sm">
+        <TabList flexWrap="wrap" gap="4px">
+          {TEMPLATE_CATEGORIES.map((cat) => (
+            <Tab
+              key={cat}
+              onClick={() => setFilterCat(cat)}
+              borderRadius="full"
+              fontSize="xs"
+              fontWeight="600"
+            >
+              {cat}
+            </Tab>
+          ))}
+        </TabList>
+      </Tabs>
+
       <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="16px" mb="20px">
-        {Object.entries(promptTemplates).map(([key, tmpl]) => (
+        {filteredTemplates.map(([key, tmpl]) => (
           <Card
             key={key}
             cursor="pointer"
@@ -216,16 +231,21 @@ export default function Export() {
             border="2px solid"
             borderColor={activeTemplate === key ? brandColor : "transparent"}
             _hover={{
-              borderColor: activeTemplate === key ? brandColor : "whiteAlpha.200",
+              borderColor: activeTemplate === key ? brandColor : "gray.200",
               transform: "translateY(-2px)",
             }}
             transition="all 0.15s"
           >
             <Flex align="center" gap="8px" mb="8px">
               <Text fontSize="xl">{tmpl.icon}</Text>
-              <Text fontSize="sm" fontWeight="700" color={textColor}>
-                {tmpl.name}
-              </Text>
+              <Box>
+                <Text fontSize="sm" fontWeight="700" color={textColor}>
+                  {tmpl.name}
+                </Text>
+                <Badge colorScheme="brand" fontSize="9px" borderRadius="full">
+                  {tmpl.category}
+                </Badge>
+              </Box>
             </Flex>
             <Text fontSize="xs" color={subColor}>
               {tmpl.description}
@@ -240,7 +260,7 @@ export default function Export() {
       {/* Generated prompt */}
       {generatedPrompt && (
         <Card>
-          <Flex justify="space-between" align="center" mb="12px">
+          <Flex justify="space-between" align="center" mb="12px" wrap="wrap" gap="8px">
             <Text fontSize="sm" fontWeight="700" color={textColor}>
               Generated Prompt ({getExportBookmarks().length} bookmarks)
             </Text>

@@ -14,7 +14,6 @@ import {
   TagCloseButton,
   Button,
   useColorModeValue,
-  Checkbox,
   IconButton,
   Menu,
   MenuButton,
@@ -23,19 +22,20 @@ import {
 } from "@chakra-ui/react";
 import {
   MdSearch,
-  MdFilterList,
   MdSelectAll,
-  MdDeselect,
   MdMoreVert,
   MdDelete,
   MdLabel,
   MdFolder,
+  MdStarBorder,
+  MdStar,
 } from "react-icons/md";
 import { useOutletContext, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/navbar/Navbar";
 import BookmarkCard from "../components/bookmarks/BookmarkCard";
 import Card from "../components/card/Card";
 import { db } from "../lib/db";
+import { CATEGORIES, getCategoryColor } from "../lib/categorize";
 
 const SORT_OPTIONS = [
   { value: "importedAt-desc", label: "Recently Added" },
@@ -57,12 +57,15 @@ export default function Bookmarks() {
   const [sortBy, setSortBy] = useState("importedAt-desc");
   const [filterTag, setFilterTag] = useState(searchParams.get("tag") || "");
   const [filterAuthor, setFilterAuthor] = useState("");
+  const [filterCategory, setFilterCategory] = useState(searchParams.get("category") || "");
+  const [filterFavorites, setFilterFavorites] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [page, setPage] = useState(1);
   const [allTags, setAllTags] = useState([]);
   const [allAuthors, setAllAuthors] = useState([]);
+  const [allCategories, setAllCategories] = useState([]);
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
@@ -75,12 +78,15 @@ export default function Bookmarks() {
 
       const tags = new Set();
       const authors = new Set();
+      const categories = new Set();
       for (const bm of all) {
         if (bm.tags) bm.tags.forEach((t) => tags.add(t));
         if (bm.author_username) authors.add(bm.author_username);
+        if (bm.categories) bm.categories.forEach((c) => categories.add(c));
       }
       setAllTags([...tags].sort());
       setAllAuthors([...authors].sort());
+      setAllCategories([...categories].sort());
     }
     load();
   }, []);
@@ -88,7 +94,6 @@ export default function Bookmarks() {
   const filtered = useMemo(() => {
     let result = [...bookmarks];
 
-    // Search
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -99,21 +104,22 @@ export default function Bookmarks() {
       );
     }
 
-    // Filter by tag
     if (filterTag) {
-      result = result.filter(
-        (bm) => bm.tags && bm.tags.includes(filterTag)
-      );
+      result = result.filter((bm) => bm.tags && bm.tags.includes(filterTag));
     }
 
-    // Filter by author
     if (filterAuthor) {
-      result = result.filter(
-        (bm) => bm.author_username === filterAuthor
-      );
+      result = result.filter((bm) => bm.author_username === filterAuthor);
     }
 
-    // Date range filter
+    if (filterCategory) {
+      result = result.filter((bm) => bm.categories && bm.categories.includes(filterCategory));
+    }
+
+    if (filterFavorites) {
+      result = result.filter((bm) => bm.favorite);
+    }
+
     if (dateFrom) {
       const from = new Date(dateFrom);
       result = result.filter((bm) => {
@@ -130,7 +136,6 @@ export default function Bookmarks() {
       });
     }
 
-    // Sort
     const [field, dir] = sortBy.split("-");
     result.sort((a, b) => {
       let va = a[field] || 0;
@@ -144,7 +149,7 @@ export default function Bookmarks() {
     });
 
     return result;
-  }, [bookmarks, search, sortBy, filterTag, filterAuthor, dateFrom, dateTo]);
+  }, [bookmarks, search, sortBy, filterTag, filterAuthor, filterCategory, filterFavorites, dateFrom, dateTo]);
 
   const paged = useMemo(
     () => filtered.slice(0, page * PAGE_SIZE),
@@ -173,6 +178,21 @@ export default function Bookmarks() {
     setSelected(new Set());
   };
 
+  const handleDelete = (id) => {
+    setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleFavoriteToggle = (id, val) => {
+    setBookmarks((prev) =>
+      prev.map((bm) => (bm.id === id ? { ...bm, favorite: val } : bm))
+    );
+  };
+
   const exportSelected = () => {
     const ids = [...selected];
     navigate("/export", { state: { selectedIds: ids } });
@@ -190,7 +210,6 @@ export default function Bookmarks() {
         }
       }
     });
-    // Refresh
     const all = await db.bookmarks.toArray();
     setBookmarks(all);
   };
@@ -228,6 +247,8 @@ export default function Bookmarks() {
     setSelected(new Set());
   };
 
+  const hasActiveFilters = filterTag || filterAuthor || filterCategory || filterFavorites || search || dateFrom || dateTo;
+
   return (
     <Box>
       <Navbar onOpen={onOpenSidebar} title="Bookmarks" />
@@ -262,6 +283,21 @@ export default function Bookmarks() {
             ))}
           </Select>
 
+          {allCategories.length > 0 && (
+            <Select
+              size="sm"
+              maxW="180px"
+              borderRadius="12px"
+              placeholder="All Categories"
+              value={filterCategory}
+              onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+            >
+              {allCategories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </Select>
+          )}
+
           {allTags.length > 0 && (
             <Select
               size="sm"
@@ -272,9 +308,7 @@ export default function Bookmarks() {
               onChange={(e) => { setFilterTag(e.target.value); setPage(1); }}
             >
               {allTags.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+                <option key={t} value={t}>{t}</option>
               ))}
             </Select>
           )}
@@ -289,12 +323,21 @@ export default function Bookmarks() {
               onChange={(e) => { setFilterAuthor(e.target.value); setPage(1); }}
             >
               {allAuthors.map((a) => (
-                <option key={a} value={a}>
-                  @{a}
-                </option>
+                <option key={a} value={a}>@{a}</option>
               ))}
             </Select>
           )}
+
+          <Button
+            size="sm"
+            variant={filterFavorites ? "solid" : "outline"}
+            colorScheme={filterFavorites ? "orange" : "gray"}
+            borderRadius="12px"
+            leftIcon={filterFavorites ? <MdStar /> : <MdStarBorder />}
+            onClick={() => { setFilterFavorites(!filterFavorites); setPage(1); }}
+          >
+            Favorites
+          </Button>
 
           <Input
             type="date"
@@ -319,12 +362,18 @@ export default function Bookmarks() {
         </Flex>
 
         {/* Active filters */}
-        {(filterTag || filterAuthor || search || dateFrom || dateTo) && (
+        {hasActiveFilters && (
           <HStack mt="10px" spacing="6px" wrap="wrap">
             {search && (
               <Tag size="sm" borderRadius="full" colorScheme="blue">
                 <TagLabel>"{search}"</TagLabel>
                 <TagCloseButton onClick={() => setSearch("")} />
+              </Tag>
+            )}
+            {filterCategory && (
+              <Tag size="sm" borderRadius="full" colorScheme={getCategoryColor(filterCategory)}>
+                <TagLabel>{filterCategory}</TagLabel>
+                <TagCloseButton onClick={() => setFilterCategory("")} />
               </Tag>
             )}
             {filterTag && (
@@ -337,6 +386,12 @@ export default function Bookmarks() {
               <Tag size="sm" borderRadius="full" colorScheme="green">
                 <TagLabel>@{filterAuthor}</TagLabel>
                 <TagCloseButton onClick={() => setFilterAuthor("")} />
+              </Tag>
+            )}
+            {filterFavorites && (
+              <Tag size="sm" borderRadius="full" colorScheme="orange">
+                <TagLabel>Favorites Only</TagLabel>
+                <TagCloseButton onClick={() => setFilterFavorites(false)} />
               </Tag>
             )}
             {dateFrom && (
@@ -433,6 +488,8 @@ export default function Bookmarks() {
                 isSelected={selected.has(bm.id)}
                 onSelect={toggleSelect}
                 onTagClick={(tag) => { setFilterTag(tag); setPage(1); }}
+                onDelete={handleDelete}
+                onFavoriteToggle={handleFavoriteToggle}
               />
             ))}
           </SimpleGrid>
