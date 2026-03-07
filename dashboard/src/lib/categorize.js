@@ -1,121 +1,154 @@
 /**
  * Auto-categorization engine for bookmarks.
- * Analyzes tweet text + scraped content to assign categories.
+ * Analyzes tweet text + scraped content to assign specific, product-focused categories.
  */
 
 export const CATEGORIES = {
-  "AI & LLMs": {
+  "Claude": {
     color: "purple",
-    icon: "brain",
     keywords: [
-      "claude", "gpt", "openai", "anthropic", "llm", "large language model",
-      "ai model", "chatgpt", "gemini", "copilot", "artificial intelligence",
-      "machine learning", "deep learning", "neural network", "transformer",
-      "fine-tuning", "fine tuning", "rag", "retrieval augmented", "embeddings",
-      "tokens", "context window", "prompt engineering", "system prompt",
-      "ai agent", "agentic", "multi-agent", "langchain", "llamaindex",
-      "mistral", "llama", "groq", "perplexity", "cursor ai",
+      "claude", "anthropic", "claude code", "claude opus", "claude sonnet",
+      "claude haiku", "artifacts", "claude 3", "claude 4", "mcp",
+      "model context protocol", "claude desktop", "claude api",
+      "system prompt", "claude pro", "anthropic console",
+    ],
+  },
+  "Prompts": {
+    color: "blue",
+    keywords: [
+      "prompt", "prompt engineering", "prompting", "system prompt",
+      "chain of thought", "few-shot", "zero-shot", "prompt template",
+      "jailbreak", "prompt injection", "megaprompt", "metaprompt",
+      "instructions", "persona prompt", "role prompt",
+    ],
+  },
+  "Lovable": {
+    color: "pink",
+    keywords: [
+      "lovable", "lovable.dev", "lovable ai", "lovableai",
+    ],
+  },
+  "Cursor": {
+    color: "cyan",
+    keywords: [
+      "cursor", "cursor ai", "cursor ide", "cursor editor",
+      "cursor composer", "cursor tab", ".cursorrules",
     ],
   },
   "Vibe Coding": {
-    color: "cyan",
-    icon: "code",
-    keywords: [
-      "vibe coding", "vibecoding", "vibe-coding", "cursor", "windsurf",
-      "v0", "bolt", "replit agent", "ai coding", "ai-assisted coding",
-      "copilot", "codeium", "tabnine", "ai pair", "code generation",
-      "natural language to code", "nl2code", "prompt to code",
-      "claude code", "aider", "continue.dev", "sourcegraph cody",
-    ],
-  },
-  "No-Code / Low-Code": {
     color: "teal",
-    icon: "layers",
     keywords: [
-      "lovable", "no-code", "nocode", "low-code", "lowcode", "bubble",
-      "webflow", "retool", "airtable", "zapier", "make.com", "n8n",
-      "supabase", "firebase", "appsmith", "softr", "glide", "adalo",
-      "flutterflow", "outsystems", "mendix", "power apps", "power automate",
+      "vibe coding", "vibecoding", "vibe-coding", "vibe code",
+      "ai coding", "ai-assisted coding", "code generation",
+      "prompt to code", "nl2code", "windsurf", "bolt",
+      "replit agent", "v0", "aider", "copilot", "codeium",
+      "tabnine", "continue.dev", "sourcegraph cody",
     ],
   },
-  "Dev Tools & APIs": {
+  "Dashboards": {
     color: "blue",
-    icon: "tool",
     keywords: [
-      "api", "sdk", "developer tool", "devtool", "github", "gitlab",
-      "vercel", "netlify", "railway", "fly.io", "docker", "kubernetes",
-      "terraform", "ci/cd", "pipeline", "webhook", "rest api", "graphql",
-      "postman", "swagger", "openapi", "npm", "yarn", "pnpm",
-      "typescript", "javascript", "python", "rust", "golang",
-      "nextjs", "next.js", "react", "vue", "svelte", "node.js", "deno", "bun",
+      "dashboard", "admin panel", "admin dashboard", "analytics dashboard",
+      "chart", "data viz", "visualization", "charts", "graphs",
+      "horizon ui", "chakra ui", "shadcn", "tremor", "recharts",
     ],
   },
-  "Productivity & Tools": {
-    color: "green",
-    icon: "zap",
-    keywords: [
-      "notebook lm", "notebooklm", "notion", "obsidian", "roam",
-      "logseq", "tana", "capacities", "productivity", "workflow",
-      "second brain", "pkm", "knowledge management", "zettelkasten",
-      "automation", "automate", "efficiency", "time management",
-      "project management", "task management", "todoist", "linear",
-    ],
-  },
-  "Marketing & Growth": {
+  "Landing Pages": {
     color: "orange",
-    icon: "trending-up",
     keywords: [
-      "marketing", "growth", "gtm", "go-to-market", "seo", "sem",
-      "content marketing", "social media", "copywriting", "branding",
-      "conversion", "funnel", "cro", "email marketing", "newsletter",
-      "audience", "distribution", "viral", "organic growth",
-      "paid ads", "facebook ads", "google ads", "tiktok ads",
-      "influencer", "affiliate", "referral", "retention", "churn",
-      "icp", "ideal customer", "persona", "target market",
+      "landing page", "hero section", "above the fold", "conversion rate",
+      "cta", "call to action", "saas landing", "homepage design",
+      "website design", "web design", "framer", "framer motion",
     ],
   },
-  "Startups & Business": {
-    color: "red",
-    icon: "briefcase",
+  "AI Tools": {
+    color: "purple",
     keywords: [
-      "startup", "founder", "entrepreneurship", "fundraising", "vc",
-      "venture capital", "seed round", "series a", "pitch deck",
-      "business model", "revenue", "mrr", "arr", "saas", "b2b", "b2c",
-      "product-market fit", "pmf", "mvp", "launch", "ship",
-      "indie hacker", "bootstrapped", "solopreneur", "side project",
-      "yc", "y combinator", "techstars", "accelerator",
+      "gpt", "openai", "chatgpt", "gemini", "llm", "large language model",
+      "ai model", "ai tool", "ai app", "perplexity", "groq",
+      "mistral", "llama", "hugging face", "replicate",
+      "midjourney", "dall-e", "stable diffusion", "ai image",
+      "eleven labs", "elevenlabs", "ai voice", "deepgram",
+      "rag", "embeddings", "vector", "fine-tuning", "fine tuning",
+      "langchain", "llamaindex", "ai agent", "agentic",
     ],
   },
-  "Design & UX": {
-    color: "pink",
-    icon: "palette",
+  "NotebookLM": {
+    color: "green",
     keywords: [
-      "design", "ux", "ui", "user experience", "user interface",
-      "figma", "sketch", "framer", "prototype", "wireframe",
-      "design system", "component library", "accessibility", "a11y",
-      "responsive", "mobile-first", "dark mode", "typography",
-      "color theory", "visual design", "interaction design",
+      "notebook lm", "notebooklm", "notebook ai", "google notebooklm",
     ],
   },
-  "Data & Analytics": {
+  "No-Code": {
+    color: "teal",
+    keywords: [
+      "no-code", "nocode", "low-code", "lowcode", "bubble",
+      "webflow", "retool", "softr", "glide", "adalo",
+      "flutterflow", "outsystems", "power apps", "appsmith",
+    ],
+  },
+  "Automation": {
     color: "yellow",
-    icon: "bar-chart",
     keywords: [
-      "data", "analytics", "metrics", "dashboard", "visualization",
-      "sql", "database", "postgresql", "mongodb", "redis",
-      "data engineering", "data pipeline", "etl", "dbt",
-      "bigquery", "snowflake", "databricks", "jupyter",
-      "pandas", "numpy", "scipy", "matplotlib", "plotly",
+      "automation", "automate", "workflow", "zapier", "make.com",
+      "n8n", "pipedream", "api integration", "webhook", "cron",
+      "scheduled", "trigger", "power automate", "ifttt",
     ],
   },
-  "Career & Learning": {
+  "Dev Tools": {
     color: "gray",
-    icon: "graduation-cap",
     keywords: [
-      "career", "job", "hiring", "interview", "resume", "salary",
-      "remote work", "freelance", "consulting", "mentorship",
-      "learning", "tutorial", "course", "bootcamp", "certification",
-      "skill", "upskill", "reskill", "portfolio", "personal brand",
+      "api", "sdk", "github", "vercel", "netlify", "railway",
+      "fly.io", "docker", "supabase", "firebase", "nextjs",
+      "next.js", "react", "typescript", "python", "node.js",
+      "npm", "git", "ci/cd", "deploy", "postgresql", "redis",
+      "graphql", "rest api", "serverless",
+    ],
+  },
+  "Marketing": {
+    color: "orange",
+    keywords: [
+      "marketing", "growth", "gtm", "go-to-market", "seo",
+      "content marketing", "copywriting", "branding", "funnel",
+      "email marketing", "newsletter", "audience", "distribution",
+      "viral", "organic", "paid ads", "influencer", "affiliate",
+      "icp", "ideal customer", "persona", "target market",
+      "social media marketing", "twitter growth", "x growth",
+    ],
+  },
+  "Startups": {
+    color: "red",
+    keywords: [
+      "startup", "founder", "fundraising", "vc", "venture capital",
+      "seed round", "pitch deck", "revenue", "mrr", "arr",
+      "saas", "b2b", "product-market fit", "pmf", "mvp",
+      "launch", "ship", "indie hacker", "bootstrapped",
+      "solopreneur", "side project", "y combinator",
+    ],
+  },
+  "Productivity": {
+    color: "green",
+    keywords: [
+      "productivity", "notion", "obsidian", "second brain",
+      "pkm", "knowledge management", "workflow", "efficiency",
+      "time management", "project management", "linear",
+      "todoist", "tana", "capacities", "logseq", "roam",
+    ],
+  },
+  "Design": {
+    color: "pink",
+    keywords: [
+      "design", "ux", "ui", "figma", "prototype", "wireframe",
+      "design system", "component", "accessibility", "typography",
+      "dark mode", "responsive", "mobile", "tailwind", "css",
+    ],
+  },
+  "Twitter / X": {
+    color: "blue",
+    keywords: [
+      "twitter", "tweet", "x.com", "bookmarks", "thread",
+      "followers", "engagement", "impressions", "twitter blue",
+      "x premium", "twitter api", "tweet viral",
     ],
   },
 };
@@ -156,8 +189,8 @@ export function categorizeBookmark(bookmark) {
   // Sort by score descending, return top matches
   matches.sort((a, b) => b.score - a.score);
 
-  // Return top 2 categories max
-  return matches.slice(0, 2).map((m) => m.category);
+  // Return top 3 categories max for more specific tagging
+  return matches.slice(0, 3).map((m) => m.category);
 }
 
 /**

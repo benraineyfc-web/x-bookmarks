@@ -35,6 +35,7 @@ import Card from "../components/card/Card";
 import TrendChart from "../components/stats/TrendChart";
 import { db, recategorizeAll } from "../lib/db";
 import { getCategoryColor } from "../lib/categorize";
+import { scrapeBookmarkBatch } from "../lib/scraper";
 
 export default function Dashboard() {
   const { onOpenSidebar } = useOutletContext();
@@ -170,20 +171,17 @@ export default function Dashboard() {
     setScraping(true);
     setScrapeResult(null);
     try {
-      const res = await fetch("/api/bookmarks/scrape-batch?limit=10", {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error("Scrape request failed");
-      const data = await res.json();
+      const data = await scrapeBookmarkBatch(10);
       setScrapeResult(data);
       toast({
         title: `Scraped ${data.scraped || 0} bookmarks`,
-        description: data.errors ? `${data.errors} errors` : "All done",
+        description: `${data.failed || 0} failed, ${data.remaining || 0} remaining`,
         status: data.scraped > 0 ? "success" : "info",
         duration: 4000,
         isClosable: true,
         position: "top",
       });
+      loadStats();
     } catch (e) {
       toast({
         title: "Scrape failed",
