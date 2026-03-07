@@ -21,8 +21,9 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Request
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Add scripts directory to path so we can import existing modules
@@ -46,6 +47,12 @@ X_API_BEARER_TOKEN = os.environ.get("X_API_BEARER_TOKEN", "")
 # --- App ---
 
 app = FastAPI(title="X Content Scraper", version="1.0.0", docs_url="/api/docs")
+
+# --- React Dashboard Static Files ---
+# Serve the built React dashboard. The dist folder is copied by Docker.
+DASHBOARD_DIST = Path(__file__).resolve().parent.parent.parent / "dashboard" / "dist"
+if DASHBOARD_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(DASHBOARD_DIST / "assets")), name="dashboard-assets")
 
 
 # --- Models ---
@@ -429,6 +436,16 @@ pre.raw{background:#111;border:1px solid #222;border-radius:8px;padding:1rem;ove
 
 @app.get("/", response_class=HTMLResponse)
 async def frontend():
+    """Serve React dashboard at root, or fall back to inline scraper UI."""
+    index_html = DASHBOARD_DIST / "index.html"
+    if index_html.exists():
+        return FileResponse(str(index_html), media_type="text/html")
+    return FRONTEND_HTML
+
+
+@app.get("/scraper", response_class=HTMLResponse)
+async def scraper_ui():
+    """The original single-URL scraper UI."""
     return FRONTEND_HTML
 
 
@@ -724,4 +741,18 @@ nav a{color:#1d9bf0;text-decoration:none;font-size:.85rem}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
+    """Serve React dashboard or fall back to inline HTML."""
+    index_html = DASHBOARD_DIST / "index.html"
+    if index_html.exists():
+        return FileResponse(str(index_html), media_type="text/html")
     return DASHBOARD_HTML
+
+
+# Catch-all for React SPA client-side routing (e.g. /bookmarks, /collections, /tags)
+@app.get("/{path:path}")
+async def spa_catch_all(path: str):
+    """Serve React app for any unmatched route (SPA client-side routing)."""
+    index_html = DASHBOARD_DIST / "index.html"
+    if index_html.exists() and not path.startswith("api/"):
+        return FileResponse(str(index_html), media_type="text/html")
+    raise HTTPException(status_code=404, detail="Not found")
