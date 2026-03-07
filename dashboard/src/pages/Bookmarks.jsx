@@ -19,6 +19,7 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
+  Kbd,
 } from "@chakra-ui/react";
 import {
   MdSearch,
@@ -29,6 +30,10 @@ import {
   MdFolder,
   MdStarBorder,
   MdStar,
+  MdViewModule,
+  MdViewList,
+  MdFilterList,
+  MdSort,
 } from "react-icons/md";
 import { useOutletContext, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/navbar/Navbar";
@@ -58,7 +63,7 @@ export default function Bookmarks() {
   const [filterTag, setFilterTag] = useState(searchParams.get("tag") || "");
   const [filterAuthor, setFilterAuthor] = useState("");
   const [filterCategory, setFilterCategory] = useState(searchParams.get("category") || "");
-  const [filterFavorites, setFilterFavorites] = useState(false);
+  const [filterFavorites, setFilterFavorites] = useState(searchParams.get("favorites") === "true");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [selected, setSelected] = useState(new Set());
@@ -66,10 +71,22 @@ export default function Bookmarks() {
   const [allTags, setAllTags] = useState([]);
   const [allAuthors, setAllAuthors] = useState([]);
   const [allCategories, setAllCategories] = useState([]);
+  const [viewMode, setViewMode] = useState("grid"); // grid or list
+  const [showFilters, setShowFilters] = useState(false);
 
-  const textColor = useColorModeValue("secondaryGray.900", "white");
-  const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subColor = useColorModeValue("gray.500", "gray.400");
   const brandColor = useColorModeValue("brand.500", "brand.400");
+  const filterBg = useColorModeValue("white", "navy.800");
+  const inputBg = useColorModeValue("gray.50", "navy.800");
+
+  // Read search params on mount and when they change
+  useEffect(() => {
+    setSearch(searchParams.get("search") || "");
+    setFilterTag(searchParams.get("tag") || "");
+    setFilterCategory(searchParams.get("category") || "");
+    setFilterFavorites(searchParams.get("favorites") === "true");
+  }, [searchParams]);
 
   useEffect(() => {
     async function load() {
@@ -113,7 +130,11 @@ export default function Bookmarks() {
     }
 
     if (filterCategory) {
-      result = result.filter((bm) => bm.categories && bm.categories.includes(filterCategory));
+      if (filterCategory === "unsorted") {
+        result = result.filter((bm) => !bm.categories || bm.categories.length === 0);
+      } else {
+        result = result.filter((bm) => bm.categories && bm.categories.includes(filterCategory));
+      }
     }
 
     if (filterFavorites) {
@@ -249,184 +270,272 @@ export default function Bookmarks() {
 
   const hasActiveFilters = filterTag || filterAuthor || filterCategory || filterFavorites || search || dateFrom || dateTo;
 
+  // Determine heading
+  let heading = "All Bookmarks";
+  if (filterCategory === "unsorted") heading = "Unsorted";
+  else if (filterCategory) heading = filterCategory;
+  else if (filterFavorites) heading = "Favorites";
+  else if (filterTag) heading = `#${filterTag}`;
+  else if (filterAuthor) heading = `@${filterAuthor}`;
+
   return (
     <Box>
-      <Navbar onOpen={onOpenSidebar} title="Bookmarks" />
+      <Navbar onOpen={onOpenSidebar} title="" />
 
-      {/* Filters */}
-      <Card mb="20px">
-        <Flex gap="12px" wrap="wrap" align="center">
-          <InputGroup maxW="300px" size="sm">
+      {/* Top bar - Dewey style */}
+      <Flex
+        align="center"
+        justify="space-between"
+        mb="20px"
+        flexWrap="wrap"
+        gap="12px"
+      >
+        <Flex align="center" gap="12px">
+          <Text fontSize="xl" fontWeight="700" color={textColor}>
+            {heading}
+          </Text>
+          <Text fontSize="sm" color={subColor}>
+            {filtered.length} bookmark{filtered.length !== 1 ? "s" : ""}
+          </Text>
+        </Flex>
+
+        <HStack spacing="8px">
+          {/* Search */}
+          <InputGroup size="sm" maxW="240px">
             <InputLeftElement>
               <MdSearch color="gray" />
             </InputLeftElement>
             <Input
-              placeholder="Search bookmarks..."
+              placeholder="Search..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              borderRadius="12px"
+              borderRadius="10px"
               fontSize="sm"
+              bg={inputBg}
+              border="none"
             />
           </InputGroup>
 
-          <Select
-            size="sm"
-            maxW="180px"
-            borderRadius="12px"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
-
-          {allCategories.length > 0 && (
-            <Select
+          {/* Sort dropdown */}
+          <Menu>
+            <MenuButton
+              as={Button}
               size="sm"
-              maxW="180px"
-              borderRadius="12px"
-              placeholder="All Categories"
-              value={filterCategory}
-              onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+              variant="ghost"
+              leftIcon={<MdSort />}
+              fontWeight="500"
+              color={subColor}
             >
-              {allCategories.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              {SORT_OPTIONS.find((o) => o.value === sortBy)?.label || "Sort"}
+            </MenuButton>
+            <MenuList>
+              {SORT_OPTIONS.map((opt) => (
+                <MenuItem
+                  key={opt.value}
+                  onClick={() => setSortBy(opt.value)}
+                  fontWeight={sortBy === opt.value ? "600" : "400"}
+                >
+                  {opt.label}
+                </MenuItem>
               ))}
-            </Select>
-          )}
+            </MenuList>
+          </Menu>
 
-          {allTags.length > 0 && (
-            <Select
-              size="sm"
-              maxW="160px"
-              borderRadius="12px"
-              placeholder="All Tags"
-              value={filterTag}
-              onChange={(e) => { setFilterTag(e.target.value); setPage(1); }}
-            >
-              {allTags.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </Select>
-          )}
-
-          {allAuthors.length > 0 && (
-            <Select
-              size="sm"
-              maxW="180px"
-              borderRadius="12px"
-              placeholder="All Authors"
-              value={filterAuthor}
-              onChange={(e) => { setFilterAuthor(e.target.value); setPage(1); }}
-            >
-              {allAuthors.map((a) => (
-                <option key={a} value={a}>@{a}</option>
-              ))}
-            </Select>
-          )}
-
+          {/* Filter toggle */}
           <Button
             size="sm"
-            variant={filterFavorites ? "solid" : "outline"}
-            colorScheme={filterFavorites ? "orange" : "gray"}
-            borderRadius="12px"
-            leftIcon={filterFavorites ? <MdStar /> : <MdStarBorder />}
-            onClick={() => { setFilterFavorites(!filterFavorites); setPage(1); }}
+            variant={showFilters ? "solid" : "ghost"}
+            colorScheme={showFilters ? "brand" : "gray"}
+            leftIcon={<MdFilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+            fontWeight="500"
           >
-            Favorites
+            Filters
           </Button>
 
-          <Input
-            type="date"
-            size="sm"
-            maxW="150px"
-            borderRadius="12px"
-            value={dateFrom}
-            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-            placeholder="From"
-            title="From date"
-          />
-          <Input
-            type="date"
-            size="sm"
-            maxW="150px"
-            borderRadius="12px"
-            value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-            placeholder="To"
-            title="To date"
-          />
-        </Flex>
-
-        {/* Active filters */}
-        {hasActiveFilters && (
-          <HStack mt="10px" spacing="6px" wrap="wrap">
-            {search && (
-              <Tag size="sm" borderRadius="full" colorScheme="blue">
-                <TagLabel>"{search}"</TagLabel>
-                <TagCloseButton onClick={() => setSearch("")} />
-              </Tag>
-            )}
-            {filterCategory && (
-              <Tag size="sm" borderRadius="full" colorScheme={getCategoryColor(filterCategory)}>
-                <TagLabel>{filterCategory}</TagLabel>
-                <TagCloseButton onClick={() => setFilterCategory("")} />
-              </Tag>
-            )}
-            {filterTag && (
-              <Tag size="sm" borderRadius="full" colorScheme="purple">
-                <TagLabel>{filterTag}</TagLabel>
-                <TagCloseButton onClick={() => setFilterTag("")} />
-              </Tag>
-            )}
-            {filterAuthor && (
-              <Tag size="sm" borderRadius="full" colorScheme="green">
-                <TagLabel>@{filterAuthor}</TagLabel>
-                <TagCloseButton onClick={() => setFilterAuthor("")} />
-              </Tag>
-            )}
-            {filterFavorites && (
-              <Tag size="sm" borderRadius="full" colorScheme="orange">
-                <TagLabel>Favorites Only</TagLabel>
-                <TagCloseButton onClick={() => setFilterFavorites(false)} />
-              </Tag>
-            )}
-            {dateFrom && (
-              <Tag size="sm" borderRadius="full" colorScheme="orange">
-                <TagLabel>From: {dateFrom}</TagLabel>
-                <TagCloseButton onClick={() => setDateFrom("")} />
-              </Tag>
-            )}
-            {dateTo && (
-              <Tag size="sm" borderRadius="full" colorScheme="orange">
-                <TagLabel>To: {dateTo}</TagLabel>
-                <TagCloseButton onClick={() => setDateTo("")} />
-              </Tag>
-            )}
+          {/* View mode */}
+          <HStack spacing="2px">
+            <IconButton
+              icon={<MdViewModule />}
+              size="sm"
+              variant={viewMode === "grid" ? "solid" : "ghost"}
+              colorScheme={viewMode === "grid" ? "brand" : "gray"}
+              aria-label="Grid view"
+              onClick={() => setViewMode("grid")}
+            />
+            <IconButton
+              icon={<MdViewList />}
+              size="sm"
+              variant={viewMode === "list" ? "solid" : "ghost"}
+              colorScheme={viewMode === "list" ? "brand" : "gray"}
+              aria-label="List view"
+              onClick={() => setViewMode("list")}
+            />
           </HStack>
-        )}
-      </Card>
+
+          {/* Select all */}
+          <Button
+            size="sm"
+            variant="ghost"
+            leftIcon={<MdSelectAll />}
+            onClick={selectAll}
+            color={subColor}
+            fontWeight="500"
+          >
+            Select All
+          </Button>
+        </HStack>
+      </Flex>
+
+      {/* Expandable filter panel */}
+      {showFilters && (
+        <Card mb="16px" p="14px 18px">
+          <Flex gap="10px" wrap="wrap" align="center">
+            {allCategories.length > 0 && (
+              <Select
+                size="sm"
+                maxW="180px"
+                borderRadius="10px"
+                placeholder="All Categories"
+                value={filterCategory}
+                onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+                bg={inputBg}
+                border="none"
+              >
+                <option value="unsorted">Unsorted</option>
+                {allCategories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </Select>
+            )}
+
+            {allTags.length > 0 && (
+              <Select
+                size="sm"
+                maxW="160px"
+                borderRadius="10px"
+                placeholder="All Tags"
+                value={filterTag}
+                onChange={(e) => { setFilterTag(e.target.value); setPage(1); }}
+                bg={inputBg}
+                border="none"
+              >
+                {allTags.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </Select>
+            )}
+
+            {allAuthors.length > 0 && (
+              <Select
+                size="sm"
+                maxW="180px"
+                borderRadius="10px"
+                placeholder="All Authors"
+                value={filterAuthor}
+                onChange={(e) => { setFilterAuthor(e.target.value); setPage(1); }}
+                bg={inputBg}
+                border="none"
+              >
+                {allAuthors.map((a) => (
+                  <option key={a} value={a}>@{a}</option>
+                ))}
+              </Select>
+            )}
+
+            <Button
+              size="sm"
+              variant={filterFavorites ? "solid" : "outline"}
+              colorScheme={filterFavorites ? "orange" : "gray"}
+              borderRadius="10px"
+              leftIcon={filterFavorites ? <MdStar /> : <MdStarBorder />}
+              onClick={() => { setFilterFavorites(!filterFavorites); setPage(1); }}
+            >
+              Favorites
+            </Button>
+
+            <Input
+              type="date"
+              size="sm"
+              maxW="145px"
+              borderRadius="10px"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              placeholder="From"
+              title="From date"
+              bg={inputBg}
+              border="none"
+            />
+            <Input
+              type="date"
+              size="sm"
+              maxW="145px"
+              borderRadius="10px"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              placeholder="To"
+              title="To date"
+              bg={inputBg}
+              border="none"
+            />
+          </Flex>
+        </Card>
+      )}
+
+      {/* Active filter pills */}
+      {hasActiveFilters && (
+        <HStack mb="16px" spacing="6px" wrap="wrap">
+          {search && (
+            <Tag size="sm" borderRadius="full" colorScheme="blue" variant="subtle">
+              <TagLabel>"{search}"</TagLabel>
+              <TagCloseButton onClick={() => setSearch("")} />
+            </Tag>
+          )}
+          {filterCategory && (
+            <Tag size="sm" borderRadius="full" colorScheme={filterCategory === "unsorted" ? "gray" : getCategoryColor(filterCategory)} variant="subtle">
+              <TagLabel>{filterCategory === "unsorted" ? "Unsorted" : filterCategory}</TagLabel>
+              <TagCloseButton onClick={() => setFilterCategory("")} />
+            </Tag>
+          )}
+          {filterTag && (
+            <Tag size="sm" borderRadius="full" colorScheme="purple" variant="subtle">
+              <TagLabel>#{filterTag}</TagLabel>
+              <TagCloseButton onClick={() => setFilterTag("")} />
+            </Tag>
+          )}
+          {filterAuthor && (
+            <Tag size="sm" borderRadius="full" colorScheme="green" variant="subtle">
+              <TagLabel>@{filterAuthor}</TagLabel>
+              <TagCloseButton onClick={() => setFilterAuthor("")} />
+            </Tag>
+          )}
+          {filterFavorites && (
+            <Tag size="sm" borderRadius="full" colorScheme="orange" variant="subtle">
+              <TagLabel>Favorites</TagLabel>
+              <TagCloseButton onClick={() => setFilterFavorites(false)} />
+            </Tag>
+          )}
+          {(dateFrom || dateTo) && (
+            <Tag size="sm" borderRadius="full" colorScheme="cyan" variant="subtle">
+              <TagLabel>{dateFrom || "..."} - {dateTo || "..."}</TagLabel>
+              <TagCloseButton onClick={() => { setDateFrom(""); setDateTo(""); }} />
+            </Tag>
+          )}
+        </HStack>
+      )}
 
       {/* Selection bar */}
       {selected.size > 0 && (
-        <Card mb="16px" p="12px 20px">
+        <Card mb="16px" p="10px 16px" bg={useColorModeValue("blue.50", "navy.700")}>
           <Flex align="center" justify="space-between">
             <Text fontSize="sm" fontWeight="600" color={textColor}>
               {selected.size} selected
             </Text>
-            <HStack spacing="8px">
+            <HStack spacing="6px">
               <Button size="xs" variant="ghost" onClick={clearSelection}>
                 Clear
               </Button>
-              <Button
-                size="xs"
-                colorScheme="brand"
-                variant="outline"
-                onClick={exportSelected}
-              >
+              <Button size="xs" colorScheme="brand" onClick={exportSelected}>
                 Export to Claude
               </Button>
               <Menu>
@@ -451,24 +560,6 @@ export default function Bookmarks() {
         </Card>
       )}
 
-      {/* Results count */}
-      <Flex justify="space-between" align="center" mb="12px" px="4px">
-        <Text fontSize="sm" color={subColor}>
-          {filtered.length} bookmark{filtered.length !== 1 ? "s" : ""}
-        </Text>
-        <HStack>
-          <Button
-            size="xs"
-            leftIcon={<MdSelectAll />}
-            variant="ghost"
-            onClick={selectAll}
-            color={subColor}
-          >
-            Select All
-          </Button>
-        </HStack>
-      </Flex>
-
       {/* Bookmark grid */}
       {filtered.length === 0 ? (
         <Card>
@@ -480,7 +571,10 @@ export default function Bookmarks() {
         </Card>
       ) : (
         <>
-          <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="16px">
+          <SimpleGrid
+            columns={viewMode === "list" ? { base: 1 } : { base: 1, md: 2, xl: 3 }}
+            gap="16px"
+          >
             {paged.map((bm) => (
               <BookmarkCard
                 key={bm.id}
@@ -502,6 +596,7 @@ export default function Bookmarks() {
                 onClick={() => setPage((p) => p + 1)}
                 color={brandColor}
                 borderColor={brandColor}
+                size="sm"
               >
                 Load More ({filtered.length - paged.length} remaining)
               </Button>

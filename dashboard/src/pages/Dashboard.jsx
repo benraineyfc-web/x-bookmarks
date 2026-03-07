@@ -11,9 +11,7 @@ import {
   useToast,
   Badge,
   HStack,
-  List,
-  ListItem,
-  ListIcon,
+  Icon,
 } from "@chakra-ui/react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import {
@@ -26,6 +24,9 @@ import {
   MdCheckCircle,
   MdArrowForward,
   MdCategory,
+  MdDescription,
+  MdFileUpload,
+  MdAutoAwesome,
 } from "react-icons/md";
 import Navbar from "../components/navbar/Navbar";
 import MiniStat from "../components/stats/MiniStat";
@@ -56,9 +57,10 @@ export default function Dashboard() {
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState(null);
   const toast = useToast();
-  const textColor = useColorModeValue("secondaryGray.900", "white");
-  const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subColor = useColorModeValue("gray.500", "gray.400");
   const brandColor = useColorModeValue("brand.500", "brand.400");
+  const cardBorder = useColorModeValue("gray.100", "whiteAlpha.100");
 
   const loadStats = async () => {
     const all = await db.bookmarks.toArray();
@@ -107,36 +109,30 @@ export default function Dashboard() {
       categorized: categorizedCount,
     });
 
-    // Recent bookmarks
     const sorted = [...all].sort(
       (a, b) => new Date(b.importedAt || 0) - new Date(a.importedAt || 0)
     );
     setRecent(sorted.slice(0, 6));
 
-    // Favorites
     const favs = all.filter((bm) => bm.favorite)
       .sort((a, b) => new Date(b.importedAt || 0) - new Date(a.importedAt || 0))
       .slice(0, 4);
     setFavorites(favs);
 
-    // Top authors
     const authorList = [...authors.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([name, count]) => ({ name, count }));
     setTopAuthors(authorList);
 
-    // Category breakdown
     const catList = Object.entries(catCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([name, count]) => ({ name, count }));
     setCategoryBreakdown(catList);
 
-    // Top action items
     setTopActions(allActions.slice(0, 8));
 
-    // Weekly trend
     const weeks = [];
     for (let w = 7; w >= 0; w--) {
       const start = new Date();
@@ -153,7 +149,6 @@ export default function Dashboard() {
     }
     setWeeklyTrend(weeks);
 
-    // Engagement breakdown
     const authorEngagement = [...authors.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
@@ -220,7 +215,7 @@ export default function Dashboard() {
       <Navbar onOpen={onOpenSidebar} title="Dashboard" />
 
       {/* Stats row */}
-      <SimpleGrid columns={{ base: 2, md: 3, xl: 6 }} gap="20px" mb="20px">
+      <SimpleGrid columns={{ base: 2, md: 3, xl: 6 }} gap="16px" mb="24px">
         <MiniStat
           name="Total Bookmarks"
           value={stats.total.toLocaleString()}
@@ -231,7 +226,7 @@ export default function Dashboard() {
           name="Unique Authors"
           value={stats.authors.toLocaleString()}
           icon={MdPerson}
-          iconBg="linear-gradient(135deg, #66E6AC 0%, #01B574 100%)"
+          iconBg="linear-gradient(135deg, #68D391 0%, #38A169 100%)"
         />
         <MiniStat
           name="Total Likes"
@@ -243,33 +238,105 @@ export default function Dashboard() {
               : stats.totalLikes.toLocaleString()
           }
           icon={MdFavorite}
-          iconBg="linear-gradient(135deg, #FF6B6B 0%, #EE5D50 100%)"
+          iconBg="linear-gradient(135deg, #FC8181 0%, #E53E3E 100%)"
         />
         <MiniStat
           name="Added This Week"
           value={stats.thisWeek.toLocaleString()}
           icon={MdTrendingUp}
-          iconBg="linear-gradient(135deg, #FFB547 0%, #FF9B05 100%)"
+          iconBg="linear-gradient(135deg, #F6AD55 0%, #DD6B20 100%)"
         />
         <MiniStat
           name="Favorites"
           value={stats.favorites.toLocaleString()}
           icon={MdStar}
-          iconBg="linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"
+          iconBg="linear-gradient(135deg, #FBD38D 0%, #D69E2E 100%)"
         />
         <MiniStat
           name="Categorized"
           value={stats.categorized.toLocaleString()}
           icon={MdCategory}
-          iconBg="linear-gradient(135deg, #9F7AEA 0%, #6B46C1 100%)"
+          iconBg="linear-gradient(135deg, #B794F4 0%, #805AD5 100%)"
         />
       </SimpleGrid>
 
-      {/* Category Breakdown + Scrape */}
-      <SimpleGrid columns={{ base: 1, md: 2 }} gap="20px" mb="20px">
+      {/* Quick Actions row */}
+      <SimpleGrid columns={{ base: 2, md: 4 }} gap="12px" mb="24px">
+        <Button
+          size="sm"
+          variant="outline"
+          borderRadius="12px"
+          leftIcon={<MdFileUpload />}
+          onClick={() => navigate("/import")}
+          fontWeight="500"
+          h="42px"
+          justifyContent="flex-start"
+          px="14px"
+        >
+          Import Bookmarks
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          borderRadius="12px"
+          leftIcon={<MdDescription />}
+          onClick={() => navigate("/export")}
+          fontWeight="500"
+          h="42px"
+          justifyContent="flex-start"
+          px="14px"
+        >
+          Generate Docs
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          borderRadius="12px"
+          leftIcon={<MdAutoAwesome />}
+          onClick={() => navigate("/categories")}
+          fontWeight="500"
+          h="42px"
+          justifyContent="flex-start"
+          px="14px"
+        >
+          Auto-Categorize
+        </Button>
+        <Button
+          size="sm"
+          colorScheme="brand"
+          variant="outline"
+          borderRadius="12px"
+          leftIcon={<MdCloudDownload />}
+          isLoading={scraping}
+          loadingText="Scraping..."
+          onClick={handleScrapeAll}
+          fontWeight="500"
+          h="42px"
+          justifyContent="flex-start"
+          px="14px"
+        >
+          Batch Scrape
+        </Button>
+      </SimpleGrid>
+
+      {scraping && <Progress size="xs" isIndeterminate borderRadius="full" colorScheme="brand" mb="16px" />}
+      {scrapeResult && (
+        <Text fontSize="xs" color="green.500" mb="16px" px="4px">
+          {scrapeResult.scraped || 0} scraped, {scrapeResult.errors || 0} errors
+        </Text>
+      )}
+
+      {/* Charts + Categories */}
+      <SimpleGrid columns={{ base: 1, xl: 3 }} gap="20px" mb="24px">
         <Card>
-          <Flex justify="space-between" align="center" mb="16px">
-            <Text fontSize="md" fontWeight="700" color={textColor}>
+          <TrendChart data={weeklyTrend} title="Bookmarks Added (Last 8 Weeks)" color="#2B6CB0" />
+        </Card>
+        <Card>
+          <TrendChart data={engagementData} title="Avg Likes by Top Authors" color="#38A169" />
+        </Card>
+        <Card>
+          <Flex justify="space-between" align="center" mb="12px">
+            <Text fontSize="sm" fontWeight="700" color={textColor}>
               Categories
             </Text>
             <Button
@@ -283,19 +350,25 @@ export default function Dashboard() {
             </Button>
           </Flex>
           {categoryBreakdown.length === 0 ? (
-            <Text color={subColor} fontSize="sm" textAlign="center" py="20px">
-              No categories yet. Import bookmarks to auto-categorize.
+            <Text color={subColor} fontSize="sm" textAlign="center" py="16px">
+              No categories yet
             </Text>
           ) : (
-            <VStack spacing="10px" align="stretch">
+            <VStack spacing="8px" align="stretch">
               {categoryBreakdown.map((cat) => (
-                <Flex key={cat.name} justify="space-between" align="center">
+                <Flex
+                  key={cat.name}
+                  justify="space-between"
+                  align="center"
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                  onClick={() => navigate(`/bookmarks?category=${encodeURIComponent(cat.name)}`)}
+                >
                   <HStack>
-                    <Badge colorScheme={getCategoryColor(cat.name)} fontSize="xs" borderRadius="full">
-                      {cat.name}
-                    </Badge>
+                    <Box w="8px" h="8px" borderRadius="full" bg={`${getCategoryColor(cat.name)}.400`} />
+                    <Text fontSize="sm" color={textColor}>{cat.name}</Text>
                   </HStack>
-                  <Text fontSize="sm" fontWeight="700" color={brandColor}>
+                  <Text fontSize="sm" fontWeight="600" color={brandColor}>
                     {cat.count}
                   </Text>
                 </Flex>
@@ -303,69 +376,15 @@ export default function Dashboard() {
             </VStack>
           )}
         </Card>
-
-        <Card p="16px 20px">
-          <Text fontSize="md" fontWeight="700" color={textColor} mb="12px">
-            Actions
-          </Text>
-          <Flex direction="column" gap="12px">
-            <Flex align="center" justify="space-between" wrap="wrap" gap="8px">
-              <Box>
-                <Text fontSize="sm" fontWeight="600" color={textColor}>
-                  Batch Scrape
-                </Text>
-                <Text fontSize="xs" color={subColor}>
-                  Scrape linked articles (10 at a time)
-                </Text>
-              </Box>
-              <Button
-                size="sm"
-                leftIcon={<MdCloudDownload />}
-                colorScheme="brand"
-                variant="solid"
-                borderRadius="12px"
-                isLoading={scraping}
-                loadingText="Scraping..."
-                onClick={handleScrapeAll}
-              >
-                Scrape
-              </Button>
-            </Flex>
-            {scraping && <Progress size="xs" isIndeterminate borderRadius="full" colorScheme="brand" />}
-            {scrapeResult && (
-              <Text fontSize="xs" color="green.500">
-                {scrapeResult.scraped || 0} scraped, {scrapeResult.errors || 0} errors
-              </Text>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              borderRadius="12px"
-              onClick={() => navigate("/export")}
-              rightIcon={<MdArrowForward />}
-            >
-              Generate Documents
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              borderRadius="12px"
-              onClick={() => navigate("/import")}
-              rightIcon={<MdArrowForward />}
-            >
-              Import Bookmarks
-            </Button>
-          </Flex>
-        </Card>
       </SimpleGrid>
 
       {/* Actionable Steps */}
       {topActions.length > 0 && (
-        <Card mb="20px">
-          <Text fontSize="md" fontWeight="700" color={textColor} mb="12px">
+        <Card mb="24px">
+          <Text fontSize="sm" fontWeight="700" color={textColor} mb="10px">
             Actionable Steps (from your bookmarks)
           </Text>
-          <SimpleGrid columns={{ base: 1, md: 2 }} gap="8px">
+          <SimpleGrid columns={{ base: 1, md: 2 }} gap="6px">
             {topActions.map((action, i) => (
               <Flex key={i} align="flex-start" gap="8px" p="8px" borderRadius="8px" bg={useColorModeValue("green.50", "green.900")}>
                 <MdCheckCircle color="#38A169" style={{ marginTop: 2, flexShrink: 0 }} />
@@ -383,24 +402,14 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Charts */}
-      <SimpleGrid columns={{ base: 1, md: 2 }} gap="20px" mb="20px">
-        <Card>
-          <TrendChart data={weeklyTrend} title="Bookmarks Added (Last 8 Weeks)" color="#2B6CB0" />
-        </Card>
-        <Card>
-          <TrendChart data={engagementData} title="Avg Likes by Top Authors" color="#01B574" />
-        </Card>
-      </SimpleGrid>
-
       {/* Favorites + Recent + Top Authors */}
       <SimpleGrid columns={{ base: 1, xl: 3 }} gap="20px">
         <Box gridColumn={{ xl: "span 2" }}>
           {/* Favorites section */}
           {favorites.length > 0 && (
             <Box mb="24px">
-              <Flex justify="space-between" align="center" mb="12px">
-                <Text fontSize="md" fontWeight="700" color={textColor}>
+              <Flex justify="space-between" align="center" mb="10px">
+                <Text fontSize="sm" fontWeight="700" color={textColor}>
                   Favorites
                 </Text>
                 <Button
@@ -408,11 +417,12 @@ export default function Dashboard() {
                   variant="ghost"
                   color={brandColor}
                   onClick={() => navigate("/bookmarks?favorites=true")}
+                  rightIcon={<MdArrowForward />}
                 >
                   View All
                 </Button>
               </Flex>
-              <SimpleGrid columns={{ base: 1, md: 2 }} gap="16px">
+              <SimpleGrid columns={{ base: 1, md: 2 }} gap="14px">
                 {favorites.map((bm) => (
                   <BookmarkCard
                     key={bm.id}
@@ -425,9 +435,20 @@ export default function Dashboard() {
             </Box>
           )}
 
-          <Text fontSize="md" fontWeight="700" color={textColor} mb="12px">
-            Recently Added
-          </Text>
+          <Flex justify="space-between" align="center" mb="10px">
+            <Text fontSize="sm" fontWeight="700" color={textColor}>
+              Recently Added
+            </Text>
+            <Button
+              size="xs"
+              variant="ghost"
+              color={brandColor}
+              onClick={() => navigate("/bookmarks")}
+              rightIcon={<MdArrowForward />}
+            >
+              View All
+            </Button>
+          </Flex>
           {recent.length === 0 ? (
             <Card>
               <Text color={subColor} textAlign="center" py="40px">
@@ -435,7 +456,7 @@ export default function Dashboard() {
               </Text>
             </Card>
           ) : (
-            <SimpleGrid columns={{ base: 1, md: 2 }} gap="16px">
+            <SimpleGrid columns={{ base: 1, md: 2 }} gap="14px">
               {recent.map((bm) => (
                 <BookmarkCard
                   key={bm.id}
@@ -449,27 +470,34 @@ export default function Dashboard() {
         </Box>
 
         <Box>
-          <Text fontSize="md" fontWeight="700" color={textColor} mb="12px">
+          <Text fontSize="sm" fontWeight="700" color={textColor} mb="10px">
             Top Authors
           </Text>
           <Card>
             {topAuthors.length === 0 ? (
-              <Text color={subColor} textAlign="center" py="20px">
+              <Text color={subColor} textAlign="center" py="20px" fontSize="sm">
                 No data yet
               </Text>
             ) : (
-              <VStack spacing="12px" align="stretch">
+              <VStack spacing="10px" align="stretch">
                 {topAuthors.map((author, i) => (
-                  <Flex key={author.name} justify="space-between" align="center">
+                  <Flex
+                    key={author.name}
+                    justify="space-between"
+                    align="center"
+                    cursor="pointer"
+                    _hover={{ opacity: 0.7 }}
+                    onClick={() => navigate(`/bookmarks?search=${encodeURIComponent(author.name)}`)}
+                  >
                     <Flex align="center" gap="8px">
-                      <Text fontSize="xs" fontWeight="700" color={subColor} w="20px">
+                      <Text fontSize="xs" fontWeight="700" color={subColor} w="18px">
                         {i + 1}
                       </Text>
-                      <Text fontSize="sm" fontWeight="600" color={textColor}>
+                      <Text fontSize="sm" fontWeight="500" color={textColor}>
                         @{author.name}
                       </Text>
                     </Flex>
-                    <Text fontSize="sm" fontWeight="700" color="brand.400">
+                    <Text fontSize="sm" fontWeight="600" color={brandColor}>
                       {author.count}
                     </Text>
                   </Flex>

@@ -5,9 +5,11 @@ export default function Card({ children, ...rest }) {
   return (
     <Box
       bg={bg}
-      borderRadius="20px"
-      p="20px"
-      boxShadow="0px 3.5px 5.5px rgba(0, 0, 0, 0.02)"
+      borderRadius="16px"
+      p="18px"
+      border="1px solid"
+      borderColor={useColorModeValue("gray.100", "whiteAlpha.100")}
+      boxShadow="0px 1px 3px rgba(0, 0, 0, 0.04)"
       {...rest}
     >
       {children}

@@ -17,6 +17,7 @@ import {
   List,
   ListItem,
   ListIcon,
+  Avatar,
 } from "@chakra-ui/react";
 import {
   MdOpenInNew,
@@ -47,11 +48,7 @@ function formatDate(dateStr) {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
-    return d.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   } catch {
     return dateStr;
   }
@@ -63,12 +60,14 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
   const [savedNotes, setSavedNotes] = useState(bookmark.notes || "");
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
 
-  const textColor = useColorModeValue("secondaryGray.900", "white");
-  const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
-  const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subColor = useColorModeValue("gray.500", "gray.400");
+  const borderColor = useColorModeValue("gray.100", "whiteAlpha.100");
   const selectedBorder = useColorModeValue("brand.500", "brand.400");
   const codeBg = useColorModeValue("gray.50", "navy.900");
   const actionBg = useColorModeValue("green.50", "green.900");
+  const cardHoverBg = useColorModeValue("gray.50", "navy.700");
+  const metaBg = useColorModeValue("gray.50", "whiteAlpha.50");
 
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const notesChanged = notes !== savedNotes;
@@ -101,33 +100,37 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
 
   return (
     <Card
-      border="2px solid"
+      border="1.5px solid"
       borderColor={isSelected ? selectedBorder : "transparent"}
       cursor="pointer"
       onClick={() => onSelect && onSelect(bookmark)}
       _hover={{
         borderColor: isSelected ? selectedBorder : borderColor,
-        transform: "translateY(-1px)",
+        transform: "translateY(-2px)",
+        boxShadow: "0px 8px 20px rgba(0, 0, 0, 0.06)",
       }}
-      transition="all 0.15s"
+      transition="all 0.2s ease"
       position="relative"
+      p="16px"
     >
-      {/* Top row: author + actions */}
-      <Flex justify="space-between" align="flex-start" mb="8px">
-        <Box>
-          <Text fontSize="sm" fontWeight="700" color={textColor}>
+      {/* Author row */}
+      <Flex align="center" gap="10px" mb="10px">
+        <Avatar
+          size="sm"
+          name={bookmark.author_name || bookmark.author_username}
+          bg="brand.500"
+          color="white"
+          fontSize="xs"
+        />
+        <Box flex="1" minW="0">
+          <Text fontSize="sm" fontWeight="700" color={textColor} noOfLines={1}>
+            {bookmark.author_name || bookmark.author_username}
+          </Text>
+          <Text fontSize="xs" color={subColor}>
             @{bookmark.author_username}
           </Text>
-          {bookmark.author_name && (
-            <Text fontSize="xs" color={subColor}>
-              {bookmark.author_name}
-            </Text>
-          )}
         </Box>
-        <Flex gap="2px" align="center">
-          <Text fontSize="xs" color={subColor} mr="4px">
-            {formatDate(bookmark.created_at)}
-          </Text>
+        <Flex gap="1px" align="center" flexShrink={0}>
           <Tooltip label={isFav ? "Unfavorite" : "Favorite"}>
             <IconButton
               icon={isFav ? <MdStar /> : <MdStarBorder />}
@@ -156,18 +159,30 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               icon={<MdDelete />}
               size="xs"
               variant="ghost"
-              color="red.400"
+              color={subColor}
               aria-label="Delete"
               onClick={handleDelete}
-              _hover={{ bg: "red.50", color: "red.600" }}
+              _hover={{ bg: "red.50", color: "red.500" }}
             />
           </Tooltip>
         </Flex>
       </Flex>
 
+      {/* Tweet text */}
+      <Text
+        fontSize="sm"
+        color={textColor}
+        noOfLines={expanded ? undefined : 5}
+        mb="12px"
+        lineHeight="1.6"
+        whiteSpace="pre-wrap"
+      >
+        {bookmark.text}
+      </Text>
+
       {/* Categories */}
       {bookmark.categories && bookmark.categories.length > 0 && (
-        <HStack spacing="4px" mb="8px" flexWrap="wrap">
+        <HStack spacing="6px" mb="10px" flexWrap="wrap">
           {bookmark.categories.map((cat) => (
             <Badge
               key={cat}
@@ -175,8 +190,9 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               fontSize="10px"
               borderRadius="full"
               px="8px"
-              py="1px"
-              fontWeight="600"
+              py="2px"
+              fontWeight="500"
+              variant="subtle"
             >
               {cat}
             </Badge>
@@ -184,57 +200,41 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
         </HStack>
       )}
 
-      <Text
-        fontSize="sm"
-        color={textColor}
-        noOfLines={expanded ? undefined : 4}
-        mb="12px"
-        lineHeight="1.5"
-        whiteSpace="pre-wrap"
+      {/* Bottom meta row - source, stats, date */}
+      <Flex
+        align="center"
+        justify="space-between"
+        pt="10px"
+        borderTop="1px solid"
+        borderColor={borderColor}
       >
-        {bookmark.text}
-      </Text>
-
-      <Flex justify="space-between" align="center">
-        <HStack spacing="12px">
-          <Flex align="center" gap="4px">
-            <MdFavorite size={14} color="#e25555" />
-            <Text fontSize="xs" color={subColor}>
+        <HStack spacing="10px">
+          <Flex align="center" gap="3px">
+            <MdFavorite size={13} color="#e25555" />
+            <Text fontSize="xs" color={subColor} fontWeight="500">
               {formatNumber(bookmark.likes)}
             </Text>
           </Flex>
-          <Flex align="center" gap="4px">
-            <MdRepeat size={14} color="#00ba7c" />
-            <Text fontSize="xs" color={subColor}>
+          <Flex align="center" gap="3px">
+            <MdRepeat size={13} color="#00ba7c" />
+            <Text fontSize="xs" color={subColor} fontWeight="500">
               {formatNumber(bookmark.retweets)}
             </Text>
           </Flex>
-          <Flex align="center" gap="4px">
-            <MdVisibility size={14} color="#8899a6" />
-            <Text fontSize="xs" color={subColor}>
+          <Flex align="center" gap="3px">
+            <MdVisibility size={13} color="#8899a6" />
+            <Text fontSize="xs" color={subColor} fontWeight="500">
               {formatNumber(bookmark.views)}
             </Text>
           </Flex>
         </HStack>
 
-        <HStack spacing="4px">
-          {bookmark.tags && bookmark.tags.length > 0 &&
-            bookmark.tags.slice(0, 3).map((tag) => (
-              <Tag
-                key={tag}
-                size="sm"
-                borderRadius="full"
-                variant="subtle"
-                colorScheme="brand"
-                cursor="pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTagClick && onTagClick(tag);
-                }}
-              >
-                <TagLabel fontSize="xs">{tag}</TagLabel>
-              </Tag>
-            ))}
+        <HStack spacing="8px" align="center">
+          <HStack spacing="4px">
+            <Text fontSize="10px" fontWeight="600" color={subColor}>X</Text>
+            <Text fontSize="10px" color={subColor}>x.com</Text>
+          </HStack>
+          <Text fontSize="10px" color={subColor}>{formatDate(bookmark.created_at)}</Text>
           <IconButton
             icon={expanded ? <MdExpandLess /> : <MdExpandMore />}
             size="xs"
@@ -246,6 +246,29 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
         </HStack>
       </Flex>
 
+      {/* Tags */}
+      {bookmark.tags && bookmark.tags.length > 0 && (
+        <HStack spacing="4px" mt="8px" flexWrap="wrap">
+          {bookmark.tags.slice(0, 4).map((tag) => (
+            <Tag
+              key={tag}
+              size="sm"
+              borderRadius="full"
+              variant="subtle"
+              colorScheme="gray"
+              cursor="pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTagClick && onTagClick(tag);
+              }}
+            >
+              <TagLabel fontSize="xs">#{tag}</TagLabel>
+            </Tag>
+          ))}
+        </HStack>
+      )}
+
+      {/* Expandable section */}
       <Collapse in={expanded} animateOpacity>
         <Box mt="12px" pt="12px" borderTop="1px solid" borderColor={borderColor}>
           {/* Action Items */}
@@ -254,7 +277,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               <Text fontSize="xs" fontWeight="700" color="green.500" mb="6px">
                 Actionable Steps
               </Text>
-              <Box bg={actionBg} borderRadius="12px" p="10px">
+              <Box bg={actionBg} borderRadius="10px" p="10px">
                 <List spacing="4px">
                   {bookmark.actionItems.map((item, i) => (
                     <ListItem key={i} fontSize="xs" color={textColor} display="flex" alignItems="flex-start">
@@ -268,7 +291,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
           )}
 
           {/* Notes */}
-          <Text fontSize="xs" fontWeight="700" color={subColor} mb="4px">
+          <Text fontSize="xs" fontWeight="600" color={subColor} mb="4px">
             Notes
           </Text>
           <Textarea
@@ -278,9 +301,11 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
             onChange={(e) => { e.stopPropagation(); setNotes(e.target.value); }}
             onClick={(e) => e.stopPropagation()}
             placeholder="Add personal notes..."
-            borderRadius="12px"
+            borderRadius="10px"
             minH="60px"
             mb="4px"
+            bg={codeBg}
+            border="none"
           />
           {notesChanged && (
             <Button
@@ -299,11 +324,11 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
           {/* Scraped content */}
           {hasScraped && (
             <Box mt="8px">
-              <Text fontSize="xs" fontWeight="700" color={subColor} mb="4px">
+              <Text fontSize="xs" fontWeight="600" color={subColor} mb="4px">
                 Scraped Content
               </Text>
               {bookmark.scraped_json.articles?.map((article, i) => (
-                <Box key={i} mb="8px" p="8px" bg={codeBg} borderRadius="8px">
+                <Box key={i} mb="8px" p="10px" bg={codeBg} borderRadius="10px">
                   <Text fontSize="xs" fontWeight="600" color={textColor} mb="2px">
                     {article.title || "Linked Article"}
                   </Text>
