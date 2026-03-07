@@ -24,30 +24,69 @@ db.version(2).stores({
   });
 });
 
+// v3: ensure media/quoteTweet/urls fields exist on all bookmarks
+db.version(3).stores({
+  bookmarks:
+    "id, author_username, created_at, *tags, *categories, importedAt, favorite",
+  tags: "++id, &name, color",
+  collections: "++id, name, createdAt",
+  collectionItems: "++id, collectionId, bookmarkId",
+}).upgrade((tx) => {
+  return tx.table("bookmarks").toCollection().modify((bm) => {
+    if (!bm.media) bm.media = [];
+    if (!bm.urls) bm.urls = [];
+    if (bm.quoteTweet === undefined) bm.quoteTweet = null;
+  });
+});
+
 /**
  * Import normalized bookmarks into IndexedDB.
- * Skips duplicates by ID. Returns { added, skipped }.
+ * If updateExisting is true, updates media/urls/quoteTweet on existing bookmarks.
+ * Returns { added, skipped, updated }.
  */
-export async function importBookmarks(normalizedBookmarks, autoTags = []) {
-  // Lazy import to avoid circular dependency
+export async function importBookmarks(normalizedBookmarks, autoTags = [], { updateExisting = false } = {}) {
   const { categorizeBookmark, extractActionItems } = await import("./categorize.js");
 
   let added = 0;
   let skipped = 0;
+  let updated = 0;
   const now = new Date().toISOString();
 
   await db.transaction("rw", db.bookmarks, async () => {
     for (const bm of normalizedBookmarks) {
       const exists = await db.bookmarks.get(bm.id);
       if (exists) {
-        skipped++;
+        if (updateExisting) {
+          // Update media/urls/quoteTweet if the new data has them and existing doesn't
+          const updates = {};
+          if (bm.media && bm.media.length > 0 && (!exists.media || exists.media.length === 0)) {
+            updates.media = bm.media;
+          }
+          if (bm.urls && bm.urls.length > 0 && (!exists.urls || exists.urls.length === 0)) {
+            updates.urls = bm.urls;
+          }
+          if (bm.quoteTweet && !exists.quoteTweet) {
+            updates.quoteTweet = bm.quoteTweet;
+          }
+          // Always update author info if missing
+          if (!exists.author_name && bm.author_name) updates.author_name = bm.author_name;
+          if (!exists.author_username && bm.author_username) updates.author_username = bm.author_username;
+          if (Object.keys(updates).length > 0) {
+            await db.bookmarks.update(bm.id, updates);
+            updated++;
+          } else {
+            skipped++;
+          }
+        } else {
+          skipped++;
+        }
         continue;
       }
       const categories = categorizeBookmark(bm);
       const actionItems = extractActionItems(bm);
       await db.bookmarks.put({
         ...bm,
-        tags: autoTags,
+        tags: autoTags.length > 0 ? autoTags : (bm.tags || []),
         categories,
         actionItems,
         favorite: false,
@@ -58,7 +97,7 @@ export async function importBookmarks(normalizedBookmarks, autoTags = []) {
     }
   });
 
-  return { added, skipped };
+  return { added, skipped, updated };
 }
 
 /**
@@ -147,6 +186,43 @@ function extractUrls(entities) {
     }));
 }
 
+/**
+ * Extract media from Twitter entities, handling photos, videos, and animated GIFs.
+ * For videos: extracts best quality video URL from video_info.variants
+ * For photos: uses media_url_https
+ */
+function extractMedia(entities) {
+  if (!entities) return [];
+  const mediaList = entities.media || [];
+  return mediaList.map((m) => {
+    const type = m.type || "photo";
+    const result = {
+      type,
+      url: m.media_url_https || m.url || "",
+      preview_image_url: m.media_url_https || m.preview_image_url || "",
+      alt_text: m.ext_alt_text || m.alt_text || "",
+    };
+
+    // For videos and animated GIFs, extract the actual video URL
+    if ((type === "video" || type === "animated_gif") && m.video_info) {
+      const variants = m.video_info.variants || [];
+      // Filter to mp4 variants and pick highest bitrate
+      const mp4Variants = variants.filter((v) => v.content_type === "video/mp4");
+      if (mp4Variants.length > 0) {
+        mp4Variants.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        result.video_url = mp4Variants[0].url;
+      } else if (variants.length > 0) {
+        // Fallback to any variant
+        result.video_url = variants[0].url;
+      }
+      // preview_image_url is the poster/thumbnail for videos
+      result.preview_image_url = m.media_url_https || "";
+    }
+
+    return result;
+  });
+}
+
 function detectFormat(sample) {
   if (sample.likeCount !== undefined && sample.retweetCount !== undefined)
     return "bird_cli";
@@ -178,6 +254,20 @@ function normalizeBird(item) {
   }
   // Extract URLs from entities
   const urls = extractUrls(item.entities || item);
+  // bird CLI may have media as array of objects or urls
+  let media = [];
+  if (item.media && item.media.length > 0) {
+    media = item.media.map((m) => {
+      if (typeof m === "string") return { type: "photo", url: m, preview_image_url: m };
+      return {
+        type: m.type || "photo",
+        url: m.url || m.media_url_https || "",
+        preview_image_url: m.preview_image_url || m.media_url_https || m.url || "",
+        video_url: m.video_url || "",
+        alt_text: m.alt_text || "",
+      };
+    });
+  }
   return {
     id: String(item.id || ""),
     text: item.text || "",
@@ -190,7 +280,7 @@ function normalizeBird(item) {
     views: item.viewCount || 0,
     replies: item.replyCount || 0,
     bookmarks: item.bookmarkCount || 0,
-    media: item.media || [],
+    media,
     quoteTweet,
     urls,
   };
@@ -225,13 +315,9 @@ function normalizeWebExporter(item) {
     };
   }
 
-  const entities =
-    legacy.extended_entities || legacy.entities || {};
-  const media = (entities.media || []).map((m) => ({
-    type: m.type || "photo",
-    url: m.media_url_https || m.url || "",
-    preview_image_url: m.preview_image_url || "",
-  }));
+  // Use extractMedia for proper video handling
+  const entities = legacy.extended_entities || legacy.entities || {};
+  const media = extractMedia(entities);
 
   // Extract URLs (link cards)
   const legacyEntities = legacy.entities || {};
@@ -253,10 +339,7 @@ function normalizeWebExporter(item) {
     const qtCore = qtResult.core || {};
     const qtUser = (qtCore.user_results || {}).result?.legacy || {};
     const qtEntities = qtLegacy.extended_entities || qtLegacy.entities || {};
-    const qtMedia = (qtEntities.media || []).map((m) => ({
-      type: m.type || "photo",
-      url: m.media_url_https || m.url || "",
-    }));
+    const qtMedia = extractMedia(qtEntities);
     quoteTweet = {
       text: qtLegacy.full_text || qtLegacy.text || "",
       author_username: qtUser.screen_name || "",
@@ -301,6 +384,29 @@ function normalizeApiV2(item) {
       quoteTweet = { text: qt.data.text || "", author_username: qtAuthor.username || "", author_name: qtAuthor.name || "", media: qt.data.media || [] };
     }
   }
+  // API v2 media comes from includes.media matched by media_keys
+  let media = [];
+  if (item.attachments?.media_keys && item._includes_media) {
+    media = item.attachments.media_keys.map((key) => {
+      const m = item._includes_media.find((inc) => inc.media_key === key);
+      if (!m) return null;
+      return {
+        type: m.type || "photo",
+        url: m.url || m.preview_image_url || "",
+        preview_image_url: m.preview_image_url || m.url || "",
+        video_url: m.variants?.find((v) => v.content_type === "video/mp4")?.url || "",
+        alt_text: m.alt_text || "",
+      };
+    }).filter(Boolean);
+  } else if (item.media && Array.isArray(item.media)) {
+    media = item.media.map((m) => ({
+      type: m.type || "photo",
+      url: m.url || m.preview_image_url || "",
+      preview_image_url: m.preview_image_url || m.url || "",
+      video_url: m.video_url || "",
+      alt_text: m.alt_text || "",
+    }));
+  }
   return {
     id: String(item.id || ""),
     text: item.text || "",
@@ -313,7 +419,7 @@ function normalizeApiV2(item) {
     views: metrics.impression_count || item.viewCount || 0,
     replies: metrics.reply_count || item.replyCount || 0,
     bookmarks: metrics.bookmark_count || item.bookmarkCount || 0,
-    media: item.media || [],
+    media,
     quoteTweet,
     urls,
   };
@@ -361,6 +467,23 @@ function normalizeGeneric(item) {
     quoteTweet = { text: qt.text || "", author_username: qtAuthor.username || qtAuthor.screen_name || "", author_name: qtAuthor.name || "", media: qt.media || [] };
   }
 
+  // Generic media extraction
+  let media = [];
+  if (item.media && Array.isArray(item.media)) {
+    media = item.media.map((m) => {
+      if (typeof m === "string") return { type: "photo", url: m, preview_image_url: m };
+      return {
+        type: m.type || "photo",
+        url: m.url || m.media_url_https || "",
+        preview_image_url: m.preview_image_url || m.media_url_https || m.url || "",
+        video_url: m.video_url || "",
+        alt_text: m.alt_text || "",
+      };
+    });
+  } else if (item.entities || item.extended_entities) {
+    media = extractMedia(item.extended_entities || item.entities || {});
+  }
+
   return {
     id: tweetId,
     text,
@@ -374,7 +497,7 @@ function normalizeGeneric(item) {
     views: getMetric("views", "view_count", "impression_count", "viewCount"),
     replies: getMetric("replies", "reply_count", "replyCount"),
     bookmarks: getMetric("bookmarks", "bookmark_count", "bookmarkCount"),
-    media: item.media || [],
+    media,
     quoteTweet,
     urls,
   };

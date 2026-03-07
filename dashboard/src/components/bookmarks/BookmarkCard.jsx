@@ -75,14 +75,13 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
           <div className={`overflow-hidden ${bookmark.media.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
             {bookmark.media.slice(0, 4).map((m, i) => (
               <div key={i} className={`relative overflow-hidden ${bookmark.media.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
-                {m.type === "video" || m.type === "animated_gif" ? (
-                  <div className="relative w-full h-full min-h-[100px] flex items-center justify-center">
-                    {(m.preview_image_url || m.url) && (
-                      <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    )}
+                {(m.type === "video" || m.type === "animated_gif") ? (
+                  <div className="relative w-full h-full min-h-[100px] flex items-center justify-center bg-muted">
+                    <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <MdPlayCircle className="size-8 text-white drop-shadow-lg" />
                     </div>
+                    {m.type === "video" && <span className="absolute bottom-1 right-1 text-[9px] text-white bg-black/60 px-1.5 py-0.5 rounded">Video</span>}
                   </div>
                 ) : (
                   <img src={m.url} alt={m.alt_text || ""} className="w-full h-full object-cover" loading="lazy" />

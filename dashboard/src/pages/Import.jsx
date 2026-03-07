@@ -3,8 +3,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { MdFileUpload, MdContentPaste, MdCheckCircle, MdClose } from "react-icons/md";
+import { MdFileUpload, MdContentPaste, MdCheckCircle, MdClose, MdRefresh } from "react-icons/md";
 import { normalize, importBookmarks } from "../lib/db";
 
 export default function Import() {
@@ -15,6 +16,7 @@ export default function Import() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("paste");
+  const [updateExisting, setUpdateExisting] = useState(true);
   const fileRef = useRef();
 
   const addTag = () => {
@@ -33,8 +35,8 @@ export default function Import() {
       const parsed = JSON.parse(rawJson);
       const normalized = normalize(parsed);
       if (normalized.length === 0) { setError("No valid bookmarks found in the data. Check the format."); setLoading(false); return; }
-      const { added, skipped } = await importBookmarks(normalized, tags);
-      setResult({ added, skipped, total: normalized.length });
+      const { added, skipped, updated } = await importBookmarks(normalized, tags, { updateExisting });
+      setResult({ added, skipped, updated, total: normalized.length });
       setJsonText("");
     } catch (e) { setError(`Failed to parse JSON: ${e.message}`); }
     setLoading(false);
@@ -53,7 +55,11 @@ export default function Import() {
       {result && (
         <div className="rounded-lg bg-green-50 border border-green-200 p-4 mb-5">
           <p className="font-semibold text-green-800">Import Complete</p>
-          <p className="text-sm text-green-700">Added {result.added} new bookmarks. {result.skipped > 0 && `${result.skipped} duplicates skipped.`}</p>
+          <p className="text-sm text-green-700">
+            Added {result.added} new bookmarks.
+            {result.updated > 0 && ` Updated ${result.updated} existing bookmarks with media/links.`}
+            {result.skipped > 0 && ` ${result.skipped} unchanged.`}
+          </p>
         </div>
       )}
 
@@ -65,7 +71,18 @@ export default function Import() {
 
       <Card className="mb-5">
         <CardContent className="p-4">
-          <p className="text-sm font-bold mb-2">Auto-tag this import batch (optional)</p>
+          <p className="text-sm font-bold mb-2">Import Options</p>
+          <div className="flex items-center gap-2 mb-3">
+            <Checkbox id="update-existing" checked={updateExisting} onCheckedChange={setUpdateExisting} />
+            <label htmlFor="update-existing" className="text-sm cursor-pointer">
+              Update existing bookmarks with media, links & quote tweets
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            <MdRefresh className="inline size-3.5 mr-1" />
+            Re-import the same JSON to update existing bookmarks with images, videos, and link previews that may have been missed.
+          </p>
+          <p className="text-sm font-bold mb-2 mt-4">Auto-tag this import batch (optional)</p>
           <div className="flex gap-2 mb-2">
             <Input className="max-w-[250px] h-8 text-sm" placeholder="e.g. startups, ai, week-10" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTag()} />
             <Button variant="outline" size="sm" onClick={addTag}>Add</Button>
@@ -130,10 +147,10 @@ export default function Import() {
           <p className="text-sm font-bold mb-3">Supported Formats</p>
           <div className="space-y-2">
             {[
-              "Twitter Web Exporter (Tampermonkey) — GraphQL intercept format",
-              "bird CLI — likeCount/retweetCount format",
-              "X API v2 — public_metrics format",
-              "Raw GraphQL — tweet_results wrapper",
+              "Twitter Web Exporter (Tampermonkey) — GraphQL intercept format with full media",
+              "bird CLI — likeCount/retweetCount format with media arrays",
+              "X API v2 — public_metrics format with media_keys",
+              "Raw GraphQL — tweet_results wrapper with extended_entities",
               "Generic — best-effort for any JSON with id + text fields",
             ].map((fmt) => (
               <div key={fmt} className="flex items-center gap-2">

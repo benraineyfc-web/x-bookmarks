@@ -136,24 +136,38 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
               {bookmark.media.map((m, i) => (
                 <div
                   key={i}
-                  className={`relative overflow-hidden cursor-pointer group ${bookmark.media.length === 1 ? "max-h-[400px]" : "max-h-[250px]"} ${i === 0 && bookmark.media.length === 3 ? "row-span-2" : ""}`}
-                  onClick={() => m.type === "photo" ? setLightboxImg(m.url) : null}
+                  className={`relative overflow-hidden group ${bookmark.media.length === 1 ? "max-h-[500px]" : "max-h-[250px]"} ${i === 0 && bookmark.media.length === 3 ? "row-span-2" : ""}`}
                 >
-                  {m.type === "video" || m.type === "animated_gif" ? (
-                    <div className="relative w-full h-full min-h-[180px] bg-muted flex items-center justify-center">
-                      {(m.preview_image_url || m.url) && (
-                        <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" />
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                        <MdPlayCircle className="size-12 text-white drop-shadow-lg" />
+                  {(m.type === "video" || m.type === "animated_gif") ? (
+                    m.video_url ? (
+                      <video
+                        src={m.video_url}
+                        poster={m.preview_image_url || m.url}
+                        controls
+                        playsInline
+                        loop={m.type === "animated_gif"}
+                        autoPlay={m.type === "animated_gif"}
+                        muted={m.type === "animated_gif"}
+                        className="w-full h-full object-contain bg-black"
+                      />
+                    ) : (
+                      <div className="relative w-full h-full min-h-[180px] bg-muted flex items-center justify-center cursor-pointer" onClick={() => window.open(bookmark.url, "_blank")}>
+                        {(m.preview_image_url || m.url) && (
+                          <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" />
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                          <MdPlayCircle className="size-12 text-white drop-shadow-lg" />
+                        </div>
+                        <span className="absolute bottom-2 right-2 text-[10px] text-white bg-black/60 px-2 py-0.5 rounded">View on X</span>
                       </div>
-                    </div>
+                    )
                   ) : (
                     <img
                       src={m.url}
                       alt={m.alt_text || ""}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
+                      onClick={() => setLightboxImg(m.url)}
                     />
                   )}
                 </div>
