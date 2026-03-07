@@ -2,6 +2,13 @@ import Dexie from "dexie";
 
 export const db = new Dexie("xBookmarks");
 
+/**
+ * Delete all bookmarks and start fresh.
+ */
+export async function deleteAllBookmarks() {
+  await db.bookmarks.clear();
+}
+
 db.version(1).stores({
   bookmarks:
     "id, author_username, created_at, *tags, importedAt",

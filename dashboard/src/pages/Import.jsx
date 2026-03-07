@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { MdFileUpload, MdContentPaste, MdCheckCircle, MdClose, MdRefresh } from "react-icons/md";
-import { normalize, importBookmarks } from "../lib/db";
+import { MdFileUpload, MdContentPaste, MdCheckCircle, MdClose, MdRefresh, MdDeleteForever } from "react-icons/md";
+import { normalize, importBookmarks, deleteAllBookmarks } from "../lib/db";
 
 export default function Import() {
   const [jsonText, setJsonText] = useState("");
@@ -17,6 +17,7 @@ export default function Import() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("paste");
   const [updateExisting, setUpdateExisting] = useState(true);
+  const [freshImport, setFreshImport] = useState(false);
   const fileRef = useRef();
 
   const addTag = () => {
@@ -44,6 +45,10 @@ export default function Import() {
       const sampleNorm = normalized[0];
       const withMedia = normalized.filter(b => b.media && b.media.length > 0 && b.media.some(m => m.url && m.url.startsWith('http')));
       const withAuthor = normalized.filter(b => b.author_username);
+      // Find a sample with media to show in diagnostics
+      const mediaSample = withMedia[0];
+      // Find matching raw item for media sample
+      const rawMediaSample = mediaSample ? rawArray.find(r => String(r.id || r.id_str || "") === mediaSample.id) : null;
       setDiagnostics({
         rawKeys: sampleRaw ? Object.keys(sampleRaw) : [],
         rawSample: sampleRaw ? JSON.stringify(sampleRaw, null, 2).slice(0, 2000) : "none",
@@ -51,10 +56,16 @@ export default function Import() {
         totalNormalized: normalized.length,
         withValidMedia: withMedia.length,
         withAuthor: withAuthor.length,
+        mediaSampleNorm: mediaSample ? JSON.stringify({ id: mediaSample.id, author_username: mediaSample.author_username, media: mediaSample.media }, null, 2) : "none",
+        rawMediaSample: rawMediaSample ? JSON.stringify({ id: rawMediaSample.id, screen_name: rawMediaSample.screen_name, media: rawMediaSample.media?.slice(0, 1) }, null, 2).slice(0, 2000) : "none",
       });
 
       if (normalized.length === 0) { setError("No valid bookmarks found in the data. Check the format."); setLoading(false); return; }
-      const { added, skipped, updated } = await importBookmarks(normalized, tags, { updateExisting });
+      // Fresh import: delete everything first
+      if (freshImport) {
+        await deleteAllBookmarks();
+      }
+      const { added, skipped, updated } = await importBookmarks(normalized, tags, { updateExisting: !freshImport && updateExisting });
       setResult({ added, skipped, updated, total: normalized.length });
       setJsonText("");
     } catch (e) { setError(`Failed to parse JSON: ${e.message}`); }
@@ -113,6 +124,13 @@ export default function Import() {
             <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Normalized sample (first bookmark)</summary>
             <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.normSample}</pre>
           </details>
+          <details className="mt-2">
+            <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Sample with media (raw + normalized)</summary>
+            <p className="text-[10px] font-semibold mt-1 mb-0.5">Raw media object:</p>
+            <pre className="text-[10px] font-mono bg-white rounded p-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.rawMediaSample}</pre>
+            <p className="text-[10px] font-semibold mt-1 mb-0.5">Normalized media:</p>
+            <pre className="text-[10px] font-mono bg-white rounded p-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.mediaSampleNorm}</pre>
+          </details>
         </div>
       )}
 
@@ -125,9 +143,19 @@ export default function Import() {
               Update existing bookmarks with media, links & quote tweets
             </label>
           </div>
-          <p className="text-xs text-muted-foreground mb-3">
+          <p className="text-xs text-muted-foreground mb-2">
             <MdRefresh className="inline size-3.5 mr-1" />
             Re-import the same JSON to update existing bookmarks with images, videos, and link previews that may have been missed.
+          </p>
+          <div className="flex items-center gap-2 mb-2 mt-3">
+            <Checkbox id="fresh-import" checked={freshImport} onCheckedChange={(v) => { setFreshImport(v); if (v) setUpdateExisting(false); }} />
+            <label htmlFor="fresh-import" className="text-sm cursor-pointer text-destructive font-medium">
+              Fresh import (delete all existing bookmarks first)
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            <MdDeleteForever className="inline size-3.5 mr-1 text-destructive" />
+            Wipes all bookmarks and imports from scratch. Use this if updates aren't applying correctly.
           </p>
           <p className="text-sm font-bold mb-2 mt-4">Auto-tag this import batch (optional)</p>
           <div className="flex gap-2 mb-2">
