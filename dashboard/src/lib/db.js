@@ -1,0 +1,249 @@
+import Dexie from "dexie";
+
+export const db = new Dexie("xBookmarks");
+
+db.version(1).stores({
+  bookmarks:
+    "id, author_username, created_at, *tags, importedAt",
+  tags: "++id, &name, color",
+  collections: "++id, name, createdAt",
+  collectionItems: "++id, collectionId, bookmarkId",
+});
+
+/**
+ * Import normalized bookmarks into IndexedDB.
+ * Skips duplicates by ID. Returns { added, skipped }.
+ */
+export async function importBookmarks(normalizedBookmarks, autoTags = []) {
+  let added = 0;
+  let skipped = 0;
+  const now = new Date().toISOString();
+
+  await db.transaction("rw", db.bookmarks, async () => {
+    for (const bm of normalizedBookmarks) {
+      const exists = await db.bookmarks.get(bm.id);
+      if (exists) {
+        skipped++;
+        continue;
+      }
+      await db.bookmarks.put({
+        ...bm,
+        tags: autoTags,
+        importedAt: now,
+        notes: "",
+      });
+      added++;
+    }
+  });
+
+  return { added, skipped };
+}
+
+/**
+ * Normalize raw JSON from various X export formats.
+ * Mirrors the Python normalizer logic from scripts/bookmark_normalizer.py
+ */
+export function normalize(rawData) {
+  // Handle wrapper objects
+  if (rawData && !Array.isArray(rawData)) {
+    for (const key of ["data", "bookmarks", "tweets", "results"]) {
+      if (Array.isArray(rawData[key])) {
+        rawData = rawData[key];
+        break;
+      }
+    }
+    if (!Array.isArray(rawData)) {
+      rawData = [rawData];
+    }
+  }
+
+  if (!rawData || rawData.length === 0) return [];
+
+  const sample = rawData[0];
+  const format = detectFormat(sample);
+
+  const normalizers = {
+    bird_cli: normalizeBird,
+    web_exporter: normalizeWebExporter,
+    api_v2: normalizeApiV2,
+    graphql: normalizeGraphQL,
+    generic: normalizeGeneric,
+  };
+
+  const fn = normalizers[format] || normalizeGeneric;
+  const results = [];
+
+  for (const item of rawData) {
+    try {
+      const normalized = fn(item);
+      if (normalized && normalized.id) {
+        results.push(normalized);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return results;
+}
+
+function detectFormat(sample) {
+  if (sample.likeCount !== undefined && sample.retweetCount !== undefined)
+    return "bird_cli";
+  if (sample.rest_id !== undefined || sample.legacy !== undefined)
+    return "web_exporter";
+  if (sample.public_metrics !== undefined || sample.author_id !== undefined)
+    return "api_v2";
+  if (
+    sample.tweet_results !== undefined ||
+    (sample.result && sample.result.legacy)
+  )
+    return "graphql";
+  return "generic";
+}
+
+function normalizeBird(item) {
+  const author = item.author || {};
+  return {
+    id: String(item.id || ""),
+    text: item.text || "",
+    author_username: author.username || "",
+    author_name: author.name || "",
+    created_at: item.createdAt || "",
+    url: `https://x.com/${author.username || "_"}/status/${item.id || ""}`,
+    likes: item.likeCount || 0,
+    retweets: item.retweetCount || 0,
+    views: item.viewCount || 0,
+    replies: item.replyCount || 0,
+    bookmarks: item.bookmarkCount || 0,
+    media: item.media || [],
+  };
+}
+
+function normalizeWebExporter(item) {
+  const legacy = item.legacy || item;
+  const tweetId = String(
+    item.rest_id || item.id || item.id_str || ""
+  );
+
+  let authorUsername = "";
+  let authorName = "";
+  const core = item.core || {};
+  const userResults = (core.user_results || {}).result || {};
+  if (userResults.legacy) {
+    authorUsername = userResults.legacy.screen_name || "";
+    authorName = userResults.legacy.name || "";
+  } else if (item.user) {
+    authorUsername =
+      item.user.screen_name || item.user.username || "";
+    authorName = item.user.name || "";
+  }
+
+  let metrics = legacy.public_metrics || {};
+  if (!Object.keys(metrics).length) {
+    metrics = {
+      favorite_count: legacy.favorite_count || 0,
+      retweet_count: legacy.retweet_count || 0,
+      reply_count: legacy.reply_count || 0,
+      bookmark_count: legacy.bookmark_count || 0,
+    };
+  }
+
+  const entities =
+    legacy.extended_entities || legacy.entities || {};
+  const media = (entities.media || []).map((m) => ({
+    type: m.type || "photo",
+    url: m.media_url_https || m.url || "",
+  }));
+
+  return {
+    id: tweetId,
+    text: legacy.full_text || legacy.text || "",
+    author_username: authorUsername,
+    author_name: authorName,
+    created_at: legacy.created_at || "",
+    url: authorUsername
+      ? `https://x.com/${authorUsername}/status/${tweetId}`
+      : "",
+    likes:
+      metrics.favorite_count || metrics.like_count || 0,
+    retweets: metrics.retweet_count || 0,
+    views:
+      typeof item.views === "object"
+        ? item.views.count || 0
+        : 0,
+    replies: metrics.reply_count || 0,
+    bookmarks: metrics.bookmark_count || 0,
+    media,
+  };
+}
+
+function normalizeApiV2(item) {
+  const metrics = item.public_metrics || {};
+  const author = item.author || {};
+  return {
+    id: String(item.id || ""),
+    text: item.text || "",
+    author_username: author.username || "",
+    author_name: author.name || "",
+    created_at: item.created_at || "",
+    url: `https://x.com/${author.username || "_"}/status/${item.id || ""}`,
+    likes: metrics.like_count || item.likeCount || 0,
+    retweets: metrics.retweet_count || item.retweetCount || 0,
+    views: metrics.impression_count || item.viewCount || 0,
+    replies: metrics.reply_count || item.replyCount || 0,
+    bookmarks: metrics.bookmark_count || item.bookmarkCount || 0,
+    media: item.media || [],
+  };
+}
+
+function normalizeGraphQL(item) {
+  const tweet =
+    (item.tweet_results || {}).result || item.result || item;
+  return normalizeWebExporter(tweet);
+}
+
+function normalizeGeneric(item) {
+  const tweetId = String(
+    item.id || item.rest_id || item.id_str || item.tweet_id || ""
+  );
+  const text = item.text || item.full_text || item.content || "";
+
+  let author = item.author || item.user || {};
+  if (typeof author === "string") author = { username: author };
+
+  const username = author.username || author.screen_name || "";
+  const name = author.name || author.display_name || "";
+
+  let url = item.url || item.tweet_url || "";
+  if (!url && username && tweetId) {
+    url = `https://x.com/${username}/status/${tweetId}`;
+  }
+
+  const getMetric = (...keys) => {
+    for (const k of keys) {
+      if (item[k] != null) return Number(item[k]) || 0;
+    }
+    const m = item.public_metrics || item.metrics || {};
+    for (const k of keys) {
+      if (m[k] != null) return Number(m[k]) || 0;
+    }
+    return 0;
+  };
+
+  return {
+    id: tweetId,
+    text,
+    author_username: username,
+    author_name: name,
+    created_at:
+      item.created_at || item.createdAt || item.date || "",
+    url,
+    likes: getMetric("likes", "like_count", "favorite_count", "likeCount"),
+    retweets: getMetric("retweets", "retweet_count", "retweetCount"),
+    views: getMetric("views", "view_count", "impression_count", "viewCount"),
+    replies: getMetric("replies", "reply_count", "replyCount"),
+    bookmarks: getMetric("bookmarks", "bookmark_count", "bookmarkCount"),
+    media: item.media || [],
+  };
+}
