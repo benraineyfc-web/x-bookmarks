@@ -10,6 +10,11 @@ primary_region = "lhr"
 
 [env]
   APP_URL = "https://x-bookmarks.fly.dev"
+  DATA_DIR = "/data"
+
+[mounts]
+  source = "bookmarks_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8000
