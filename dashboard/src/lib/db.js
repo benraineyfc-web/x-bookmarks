@@ -57,22 +57,25 @@ export async function importBookmarks(normalizedBookmarks, autoTags = [], { upda
       const exists = await db.bookmarks.get(bm.id);
       if (exists) {
         if (updateExisting) {
-          // Update media/urls/quoteTweet - always prefer new data with valid URLs
+          // Always overwrite with new data when it has values
           const updates = {};
           const hasValidNewMedia = bm.media && bm.media.some(m => m.url && m.url.startsWith('http'));
-          const hasValidExistingMedia = exists.media && exists.media.some(m => m.url && m.url.startsWith('http'));
-          if (hasValidNewMedia && !hasValidExistingMedia) {
+          if (hasValidNewMedia) {
             updates.media = bm.media;
           }
-          if (bm.urls && bm.urls.length > 0 && (!exists.urls || exists.urls.length === 0)) {
+          if (bm.urls && bm.urls.length > 0) {
             updates.urls = bm.urls;
           }
-          if (bm.quoteTweet && !exists.quoteTweet) {
+          if (bm.quoteTweet) {
             updates.quoteTweet = bm.quoteTweet;
           }
-          // Always update author info if missing
-          if (!exists.author_name && bm.author_name) updates.author_name = bm.author_name;
-          if (!exists.author_username && bm.author_username) updates.author_username = bm.author_username;
+          // Always update author info when new data has it
+          if (bm.author_name) updates.author_name = bm.author_name;
+          if (bm.author_username) updates.author_username = bm.author_username;
+          // Update URL if new one is better (has actual username)
+          if (bm.url && bm.author_username && (!exists.url || exists.url.includes("/_/"))) {
+            updates.url = bm.url;
+          }
           if (Object.keys(updates).length > 0) {
             await db.bookmarks.update(bm.id, updates);
             updated++;
@@ -152,6 +155,7 @@ export function normalize(rawData) {
 
   const normalizers = {
     bird_cli: normalizeBird,
+    tampermonkey: normalizeTampermonkey,
     web_exporter: normalizeWebExporter,
     api_v2: normalizeApiV2,
     graphql: normalizeGraphQL,
@@ -233,6 +237,9 @@ function extractMedia(entities) {
 function detectFormat(sample) {
   if (sample.likeCount !== undefined && sample.retweetCount !== undefined)
     return "bird_cli";
+  // Tampermonkey / flattened format: top-level screen_name + favorite_count
+  if (sample.screen_name !== undefined && sample.favorite_count !== undefined)
+    return "tampermonkey";
   if (sample.rest_id !== undefined || sample.legacy !== undefined)
     return "web_exporter";
   if (sample.public_metrics !== undefined || sample.author_id !== undefined)
@@ -287,6 +294,92 @@ function normalizeBird(item) {
     views: item.viewCount || 0,
     replies: item.replyCount || 0,
     bookmarks: item.bookmarkCount || 0,
+    media,
+    quoteTweet,
+    urls,
+  };
+}
+
+/**
+ * Normalize flattened Tampermonkey export format.
+ * Has top-level: screen_name, name, full_text, media[], favorite_count, quoted_status, url, etc.
+ */
+function normalizeTampermonkey(item) {
+  const tweetId = String(item.id || item.id_str || "");
+  const authorUsername = item.screen_name || "";
+  const authorName = item.name || authorUsername || "";
+
+  // Media: array of objects with media_url_https, type, video_info, ext_alt_text
+  let media = [];
+  if (item.media && Array.isArray(item.media) && item.media.length > 0) {
+    media = item.media.map((m) => {
+      if (typeof m === "string") return { type: "photo", url: m, preview_image_url: m };
+      const type = m.type || "photo";
+      const result = {
+        type,
+        url: m.media_url_https || m.media_url || m.url || "",
+        preview_image_url: m.media_url_https || m.media_url || m.preview_image_url || "",
+        alt_text: m.ext_alt_text || m.alt_text || "",
+      };
+      // Extract video URL from video_info
+      if ((type === "video" || type === "animated_gif") && m.video_info) {
+        const variants = m.video_info.variants || [];
+        const mp4s = variants.filter((v) => v.content_type === "video/mp4");
+        if (mp4s.length > 0) {
+          mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          result.video_url = mp4s[0].url;
+        } else if (variants.length > 0) {
+          result.video_url = variants[0].url;
+        }
+        result.preview_image_url = m.media_url_https || m.media_url || "";
+      }
+      return result;
+    });
+  }
+
+  // Quoted tweet from quoted_status
+  let quoteTweet = null;
+  if (item.quoted_status) {
+    const qs = item.quoted_status;
+    let qsMedia = [];
+    if (qs.media && Array.isArray(qs.media)) {
+      qsMedia = qs.media.map((m) => ({
+        type: m.type || "photo",
+        url: m.media_url_https || m.media_url || m.url || "",
+        preview_image_url: m.media_url_https || m.media_url || "",
+        alt_text: m.ext_alt_text || m.alt_text || "",
+      }));
+    }
+    quoteTweet = {
+      text: qs.full_text || qs.text || "",
+      author_username: qs.screen_name || "",
+      author_name: qs.name || qs.screen_name || "",
+      media: qsMedia,
+    };
+  }
+
+  // URLs from entities or metadata
+  let urls = [];
+  if (item.entities?.urls) {
+    urls = extractUrls(item.entities);
+  } else if (item.metadata?.urls) {
+    urls = extractUrls(item.metadata);
+  }
+
+  const tweetUrl = item.url || (authorUsername ? `https://x.com/${authorUsername}/status/${tweetId}` : "");
+
+  return {
+    id: tweetId,
+    text: item.full_text || item.text || "",
+    author_username: authorUsername,
+    author_name: authorName,
+    created_at: item.created_at || "",
+    url: tweetUrl,
+    likes: item.favorite_count || 0,
+    retweets: item.retweet_count || 0,
+    views: item.views_count || 0,
+    replies: item.reply_count || 0,
+    bookmarks: item.bookmark_count || 0,
     media,
     quoteTweet,
     urls,
@@ -447,8 +540,8 @@ function normalizeGeneric(item) {
   let author = item.author || item.user || {};
   if (typeof author === "string") author = { username: author };
 
-  const username = author.username || author.screen_name || "";
-  const name = author.name || author.display_name || "";
+  const username = author.username || author.screen_name || item.screen_name || "";
+  const name = author.name || author.display_name || item.name || "";
 
   let url = item.url || item.tweet_url || "";
   if (!url && username && tweetId) {
