@@ -29,8 +29,9 @@ import {
   MdMoreVert,
   MdDelete,
   MdLabel,
+  MdFolder,
 } from "react-icons/md";
-import { useOutletContext, useNavigate } from "react-router-dom";
+import { useOutletContext, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/navbar/Navbar";
 import BookmarkCard from "../components/bookmarks/BookmarkCard";
 import Card from "../components/card/Card";
@@ -50,11 +51,14 @@ const PAGE_SIZE = 30;
 export default function Bookmarks() {
   const { onOpenSidebar } = useOutletContext();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [bookmarks, setBookmarks] = useState([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("search") || "");
   const [sortBy, setSortBy] = useState("importedAt-desc");
-  const [filterTag, setFilterTag] = useState("");
+  const [filterTag, setFilterTag] = useState(searchParams.get("tag") || "");
   const [filterAuthor, setFilterAuthor] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [page, setPage] = useState(1);
   const [allTags, setAllTags] = useState([]);
@@ -109,6 +113,23 @@ export default function Bookmarks() {
       );
     }
 
+    // Date range filter
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      result = result.filter((bm) => {
+        const d = new Date(bm.created_at || bm.importedAt || 0);
+        return d >= from;
+      });
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      result = result.filter((bm) => {
+        const d = new Date(bm.created_at || bm.importedAt || 0);
+        return d <= to;
+      });
+    }
+
     // Sort
     const [field, dir] = sortBy.split("-");
     result.sort((a, b) => {
@@ -123,7 +144,7 @@ export default function Bookmarks() {
     });
 
     return result;
-  }, [bookmarks, search, sortBy, filterTag, filterAuthor]);
+  }, [bookmarks, search, sortBy, filterTag, filterAuthor, dateFrom, dateTo]);
 
   const paged = useMemo(
     () => filtered.slice(0, page * PAGE_SIZE),
@@ -172,6 +193,39 @@ export default function Bookmarks() {
     // Refresh
     const all = await db.bookmarks.toArray();
     setBookmarks(all);
+  };
+
+  const addToCollection = async () => {
+    const collections = await db.collections.toArray();
+    if (collections.length === 0) {
+      const name = prompt("No collections yet. Enter a name to create one:");
+      if (!name?.trim()) return;
+      const id = await db.collections.add({ name: name.trim(), createdAt: new Date().toISOString() });
+      for (const bmId of selected) {
+        await db.collectionItems.add({ collectionId: id, bookmarkId: bmId });
+      }
+    } else {
+      const list = collections.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+      const choice = prompt(`Choose a collection (enter number):\n${list}\n\nOr type a new name to create one:`);
+      if (!choice?.trim()) return;
+      const num = parseInt(choice);
+      let collId;
+      if (num >= 1 && num <= collections.length) {
+        collId = collections[num - 1].id;
+      } else {
+        collId = await db.collections.add({ name: choice.trim(), createdAt: new Date().toISOString() });
+      }
+      for (const bmId of selected) {
+        const exists = await db.collectionItems
+          .where("collectionId").equals(collId)
+          .filter((i) => i.bookmarkId === bmId)
+          .first();
+        if (!exists) {
+          await db.collectionItems.add({ collectionId: collId, bookmarkId: bmId });
+        }
+      }
+    }
+    setSelected(new Set());
   };
 
   return (
@@ -241,11 +295,32 @@ export default function Bookmarks() {
               ))}
             </Select>
           )}
+
+          <Input
+            type="date"
+            size="sm"
+            maxW="150px"
+            borderRadius="12px"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            placeholder="From"
+            title="From date"
+          />
+          <Input
+            type="date"
+            size="sm"
+            maxW="150px"
+            borderRadius="12px"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            placeholder="To"
+            title="To date"
+          />
         </Flex>
 
         {/* Active filters */}
-        {(filterTag || filterAuthor || search) && (
-          <HStack mt="10px" spacing="6px">
+        {(filterTag || filterAuthor || search || dateFrom || dateTo) && (
+          <HStack mt="10px" spacing="6px" wrap="wrap">
             {search && (
               <Tag size="sm" borderRadius="full" colorScheme="blue">
                 <TagLabel>"{search}"</TagLabel>
@@ -262,6 +337,18 @@ export default function Bookmarks() {
               <Tag size="sm" borderRadius="full" colorScheme="green">
                 <TagLabel>@{filterAuthor}</TagLabel>
                 <TagCloseButton onClick={() => setFilterAuthor("")} />
+              </Tag>
+            )}
+            {dateFrom && (
+              <Tag size="sm" borderRadius="full" colorScheme="orange">
+                <TagLabel>From: {dateFrom}</TagLabel>
+                <TagCloseButton onClick={() => setDateFrom("")} />
+              </Tag>
+            )}
+            {dateTo && (
+              <Tag size="sm" borderRadius="full" colorScheme="orange">
+                <TagLabel>To: {dateTo}</TagLabel>
+                <TagCloseButton onClick={() => setDateTo("")} />
               </Tag>
             )}
           </HStack>
@@ -295,6 +382,9 @@ export default function Bookmarks() {
                     if (tag) addTagToSelected(tag.trim());
                   }}>
                     Add Tag
+                  </MenuItem>
+                  <MenuItem icon={<MdFolder />} onClick={addToCollection}>
+                    Add to Collection
                   </MenuItem>
                   <MenuItem icon={<MdDelete />} color="red.400" onClick={deleteSelected}>
                     Delete Selected

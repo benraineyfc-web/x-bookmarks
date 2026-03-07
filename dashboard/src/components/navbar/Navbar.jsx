@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Box,
   Flex,
@@ -10,15 +11,25 @@ import {
   InputLeftElement,
 } from "@chakra-ui/react";
 import { MdMenu, MdDarkMode, MdLightMode, MdSearch } from "react-icons/md";
+import { useNavigate } from "react-router-dom";
 
 export default function Navbar({ onOpen, title }) {
   const { colorMode, toggleColorMode } = useColorMode();
+  const navigate = useNavigate();
+  const [searchVal, setSearchVal] = useState("");
   const navbarBg = useColorModeValue(
     "rgba(244,247,254,0.2)",
     "rgba(11,20,55,0.5)"
   );
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const inputBg = useColorModeValue("white", "navy.800");
+
+  const handleSearch = (e) => {
+    if (e.key === "Enter" && searchVal.trim()) {
+      navigate(`/bookmarks?search=${encodeURIComponent(searchVal.trim())}`);
+      setSearchVal("");
+    }
+  };
 
   return (
     <Flex
@@ -59,6 +70,9 @@ export default function Navbar({ onOpen, title }) {
             borderRadius="12px"
             border="none"
             fontSize="sm"
+            value={searchVal}
+            onChange={(e) => setSearchVal(e.target.value)}
+            onKeyDown={handleSearch}
           />
         </InputGroup>
         <IconButton

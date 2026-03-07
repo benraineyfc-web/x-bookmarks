@@ -18,11 +18,13 @@ import {
   MdFileUpload,
   MdShare,
   MdLabel,
+  MdFolder,
 } from "react-icons/md";
 
 const links = [
   { name: "Dashboard", path: "/", icon: MdDashboard },
   { name: "Bookmarks", path: "/bookmarks", icon: MdBookmarks },
+  { name: "Collections", path: "/collections", icon: MdFolder },
   { name: "Import", path: "/import", icon: MdFileUpload },
   { name: "Export to Claude", path: "/export", icon: MdShare },
   { name: "Tags", path: "/tags", icon: MdLabel },

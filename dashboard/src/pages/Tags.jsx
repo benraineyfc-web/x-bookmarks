@@ -12,7 +12,7 @@ import {
   useColorModeValue,
   IconButton,
 } from "@chakra-ui/react";
-import { MdDelete, MdAdd } from "react-icons/md";
+import { MdDelete, MdAdd, MdEdit } from "react-icons/md";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar/Navbar";
 import Card from "../components/card/Card";
@@ -22,7 +22,8 @@ export default function Tags() {
   const { onOpenSidebar } = useOutletContext();
   const navigate = useNavigate();
   const [tagCounts, setTagCounts] = useState([]);
-  const [newTag, setNewTag] = useState("");
+  const [editingTag, setEditingTag] = useState(null);
+  const [editValue, setEditValue] = useState("");
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
   const brandColor = useColorModeValue("brand.500", "brand.400");
@@ -94,34 +95,67 @@ export default function Tags() {
         <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="16px">
           {tagCounts.map(({ name, count }) => (
             <Card key={name}>
-              <Flex justify="space-between" align="center">
-                <Flex align="center" gap="10px">
-                  <Tag
-                    size="lg"
-                    borderRadius="full"
-                    colorScheme="brand"
-                    cursor="pointer"
-                    onClick={() =>
-                      navigate(`/bookmarks?tag=${encodeURIComponent(name)}`)
-                    }
-                  >
-                    <TagLabel>{name}</TagLabel>
-                  </Tag>
-                  <Text fontSize="sm" fontWeight="600" color={textColor}>
-                    {count} bookmark{count !== 1 ? "s" : ""}
-                  </Text>
-                </Flex>
+              {editingTag === name ? (
                 <HStack>
-                  <IconButton
-                    icon={<MdDelete />}
-                    size="xs"
-                    variant="ghost"
-                    color="red.400"
-                    aria-label="Delete tag"
-                    onClick={() => removeTag(name)}
+                  <Input
+                    size="sm"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        renameTag(name, editValue.trim());
+                        setEditingTag(null);
+                      }
+                      if (e.key === "Escape") setEditingTag(null);
+                    }}
+                    borderRadius="12px"
+                    autoFocus
                   />
+                  <Button size="xs" onClick={() => { renameTag(name, editValue.trim()); setEditingTag(null); }}>
+                    Save
+                  </Button>
+                  <Button size="xs" variant="ghost" onClick={() => setEditingTag(null)}>
+                    Cancel
+                  </Button>
                 </HStack>
-              </Flex>
+              ) : (
+                <Flex justify="space-between" align="center">
+                  <Flex align="center" gap="10px">
+                    <Tag
+                      size="lg"
+                      borderRadius="full"
+                      colorScheme="brand"
+                      cursor="pointer"
+                      onClick={() =>
+                        navigate(`/bookmarks?tag=${encodeURIComponent(name)}`)
+                      }
+                    >
+                      <TagLabel>{name}</TagLabel>
+                    </Tag>
+                    <Text fontSize="sm" fontWeight="600" color={textColor}>
+                      {count} bookmark{count !== 1 ? "s" : ""}
+                    </Text>
+                  </Flex>
+                  <HStack>
+                    <IconButton
+                      icon={<MdEdit />}
+                      size="xs"
+                      variant="ghost"
+                      color={subColor}
+                      aria-label="Rename tag"
+                      onClick={() => { setEditingTag(name); setEditValue(name); }}
+                    />
+                    <IconButton
+                      icon={<MdDelete />}
+                      size="xs"
+                      variant="ghost"
+                      color="red.400"
+                      aria-label="Delete tag"
+                      onClick={() => removeTag(name)}
+                    />
+                  </HStack>
+                </Flex>
+              )}
             </Card>
           ))}
         </SimpleGrid>

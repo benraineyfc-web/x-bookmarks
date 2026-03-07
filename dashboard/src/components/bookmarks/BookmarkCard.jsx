@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Box,
   Flex,
@@ -9,9 +10,21 @@ import {
   useColorModeValue,
   Tooltip,
   Link,
+  Collapse,
+  Textarea,
+  Button,
 } from "@chakra-ui/react";
-import { MdOpenInNew, MdBookmarkAdd, MdFavorite, MdRepeat, MdVisibility } from "react-icons/md";
+import {
+  MdOpenInNew,
+  MdFavorite,
+  MdRepeat,
+  MdVisibility,
+  MdExpandMore,
+  MdExpandLess,
+  MdSave,
+} from "react-icons/md";
 import Card from "../card/Card";
+import { db } from "../../lib/db";
 
 function formatNumber(n) {
   if (!n) return "0";
@@ -35,10 +48,29 @@ function formatDate(dateStr) {
 }
 
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick }) {
+  const [expanded, setExpanded] = useState(false);
+  const [notes, setNotes] = useState(bookmark.notes || "");
+  const [savedNotes, setSavedNotes] = useState(bookmark.notes || "");
+
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
   const borderColor = useColorModeValue("gray.200", "whiteAlpha.100");
   const selectedBorder = useColorModeValue("brand.500", "brand.400");
+  const codeBg = useColorModeValue("gray.50", "navy.900");
+
+  const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
+  const notesChanged = notes !== savedNotes;
+
+  const saveNotes = async (e) => {
+    e.stopPropagation();
+    await db.bookmarks.update(bookmark.id, { notes });
+    setSavedNotes(notes);
+  };
+
+  const toggleExpand = (e) => {
+    e.stopPropagation();
+    setExpanded((v) => !v);
+  };
 
   return (
     <Card
@@ -86,7 +118,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
       <Text
         fontSize="sm"
         color={textColor}
-        noOfLines={4}
+        noOfLines={expanded ? undefined : 4}
         mb="12px"
         lineHeight="1.5"
         whiteSpace="pre-wrap"
@@ -116,9 +148,9 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
           </Flex>
         </HStack>
 
-        {bookmark.tags && bookmark.tags.length > 0 && (
-          <HStack spacing="4px">
-            {bookmark.tags.slice(0, 3).map((tag) => (
+        <HStack spacing="4px">
+          {bookmark.tags && bookmark.tags.length > 0 &&
+            bookmark.tags.slice(0, 3).map((tag) => (
               <Tag
                 key={tag}
                 size="sm"
@@ -134,9 +166,89 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
                 <TagLabel fontSize="xs">{tag}</TagLabel>
               </Tag>
             ))}
-          </HStack>
-        )}
+          <IconButton
+            icon={expanded ? <MdExpandLess /> : <MdExpandMore />}
+            size="xs"
+            variant="ghost"
+            color={subColor}
+            aria-label="Expand"
+            onClick={toggleExpand}
+          />
+        </HStack>
       </Flex>
+
+      <Collapse in={expanded} animateOpacity>
+        <Box mt="12px" pt="12px" borderTop="1px solid" borderColor={borderColor}>
+          {/* Notes */}
+          <Text fontSize="xs" fontWeight="700" color={subColor} mb="4px">
+            Notes
+          </Text>
+          <Textarea
+            size="sm"
+            fontSize="xs"
+            value={notes}
+            onChange={(e) => { e.stopPropagation(); setNotes(e.target.value); }}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Add personal notes..."
+            borderRadius="12px"
+            minH="60px"
+            mb="4px"
+          />
+          {notesChanged && (
+            <Button
+              size="xs"
+              leftIcon={<MdSave />}
+              colorScheme="brand"
+              variant="solid"
+              borderRadius="8px"
+              onClick={saveNotes}
+              mb="8px"
+            >
+              Save Notes
+            </Button>
+          )}
+
+          {/* Scraped content */}
+          {hasScraped && (
+            <Box mt="8px">
+              <Text fontSize="xs" fontWeight="700" color={subColor} mb="4px">
+                Scraped Content
+              </Text>
+              {bookmark.scraped_json.articles?.map((article, i) => (
+                <Box key={i} mb="8px" p="8px" bg={codeBg} borderRadius="8px">
+                  <Text fontSize="xs" fontWeight="600" color={textColor} mb="2px">
+                    {article.title || "Linked Article"}
+                  </Text>
+                  {article.description && (
+                    <Text fontSize="xs" color={subColor} mb="4px">
+                      {article.description}
+                    </Text>
+                  )}
+                  <Text fontSize="xs" color={subColor} noOfLines={6} whiteSpace="pre-wrap">
+                    {article.markdown || article.text || ""}
+                  </Text>
+                  {article.url && (
+                    <Link
+                      href={article.url}
+                      isExternal
+                      fontSize="xs"
+                      color="brand.400"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Open article
+                    </Link>
+                  )}
+                </Box>
+              ))}
+              {!bookmark.scraped_json.articles?.length && (
+                <Text fontSize="xs" color={subColor}>
+                  Scraped data available (no linked articles found)
+                </Text>
+              )}
+            </Box>
+          )}
+        </Box>
+      </Collapse>
     </Card>
   );
 }

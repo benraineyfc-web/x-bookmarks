@@ -7,6 +7,7 @@ import Bookmarks from "./pages/Bookmarks";
 import Import from "./pages/Import";
 import Export from "./pages/Export";
 import Tags from "./pages/Tags";
+import Collections from "./pages/Collections";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
               <Route path="/import" element={<Import />} />
               <Route path="/export" element={<Export />} />
               <Route path="/tags" element={<Tags />} />
+              <Route path="/collections" element={<Collections />} />
             </Route>
           </Routes>
         </BrowserRouter>

@@ -6,6 +6,9 @@ import {
   Flex,
   useColorModeValue,
   VStack,
+  Button,
+  Progress,
+  useToast,
 } from "@chakra-ui/react";
 import { useOutletContext } from "react-router-dom";
 import {
@@ -13,11 +16,13 @@ import {
   MdPerson,
   MdFavorite,
   MdTrendingUp,
+  MdCloudDownload,
 } from "react-icons/md";
 import Navbar from "../components/navbar/Navbar";
 import MiniStat from "../components/stats/MiniStat";
 import BookmarkCard from "../components/bookmarks/BookmarkCard";
 import Card from "../components/card/Card";
+import TrendChart from "../components/stats/TrendChart";
 import { db } from "../lib/db";
 
 export default function Dashboard() {
@@ -30,6 +35,11 @@ export default function Dashboard() {
   });
   const [recent, setRecent] = useState([]);
   const [topAuthors, setTopAuthors] = useState([]);
+  const [weeklyTrend, setWeeklyTrend] = useState([]);
+  const [engagementData, setEngagementData] = useState([]);
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState(null);
+  const toast = useToast();
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
 
@@ -74,10 +84,71 @@ export default function Dashboard() {
         .slice(0, 10)
         .map(([name, count]) => ({ name, count }));
       setTopAuthors(authorList);
+
+      // Weekly trend (last 8 weeks)
+      const weeks = [];
+      for (let w = 7; w >= 0; w--) {
+        const start = new Date();
+        start.setDate(start.getDate() - w * 7);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 7);
+        const count = all.filter((bm) => {
+          const d = new Date(bm.importedAt || bm.created_at || 0);
+          return d >= start && d < end;
+        }).length;
+        const label = start.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+        weeks.push({ label, value: count });
+      }
+      setWeeklyTrend(weeks);
+
+      // Engagement breakdown (avg likes by top 5 authors)
+      const authorEngagement = [...authors.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([name]) => {
+          const authorBms = all.filter((bm) => bm.author_username === name);
+          const avgLikes = Math.round(
+            authorBms.reduce((s, bm) => s + (bm.likes || 0), 0) / authorBms.length
+          );
+          return { label: `@${name.slice(0, 8)}`, value: avgLikes };
+        });
+      setEngagementData(authorEngagement);
     }
 
     loadStats();
   }, []);
+
+  const handleScrapeAll = async () => {
+    setScraping(true);
+    setScrapeResult(null);
+    try {
+      const res = await fetch("/api/bookmarks/scrape-batch?limit=10", {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Scrape request failed");
+      const data = await res.json();
+      setScrapeResult(data);
+      toast({
+        title: `Scraped ${data.scraped || 0} bookmarks`,
+        description: data.errors ? `${data.errors} errors` : "All done",
+        status: data.scraped > 0 ? "success" : "info",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    } catch (e) {
+      toast({
+        title: "Scrape failed",
+        description: e.message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    }
+    setScraping(false);
+  };
 
   return (
     <Box>
@@ -114,6 +185,48 @@ export default function Dashboard() {
           icon={MdTrendingUp}
           iconBg="linear-gradient(135deg, #FFB547 0%, #FF9B05 100%)"
         />
+      </SimpleGrid>
+
+      {/* Scrape All */}
+      <Card mb="20px" p="16px 20px">
+        <Flex align="center" justify="space-between" wrap="wrap" gap="12px">
+          <Box>
+            <Text fontSize="sm" fontWeight="700" color={textColor}>
+              Batch Scrape
+            </Text>
+            <Text fontSize="xs" color={subColor}>
+              Scrape linked articles for up to 10 un-scraped bookmarks at a time
+            </Text>
+          </Box>
+          <Button
+            size="sm"
+            leftIcon={<MdCloudDownload />}
+            colorScheme="brand"
+            variant="solid"
+            borderRadius="12px"
+            isLoading={scraping}
+            loadingText="Scraping..."
+            onClick={handleScrapeAll}
+          >
+            Scrape All
+          </Button>
+        </Flex>
+        {scraping && <Progress size="xs" isIndeterminate mt="12px" borderRadius="full" colorScheme="brand" />}
+        {scrapeResult && (
+          <Text fontSize="xs" color="green.400" mt="8px">
+            {scrapeResult.scraped || 0} scraped, {scrapeResult.errors || 0} errors, {scrapeResult.skipped || 0} skipped
+          </Text>
+        )}
+      </Card>
+
+      {/* Analytics charts */}
+      <SimpleGrid columns={{ base: 1, md: 2 }} gap="20px" mb="20px">
+        <Card>
+          <TrendChart data={weeklyTrend} title="Bookmarks Added (Last 8 Weeks)" color="#7551FF" />
+        </Card>
+        <Card>
+          <TrendChart data={engagementData} title="Avg Likes by Top Authors" color="#01B574" />
+        </Card>
       </SimpleGrid>
 
       <SimpleGrid columns={{ base: 1, xl: 3 }} gap="20px">

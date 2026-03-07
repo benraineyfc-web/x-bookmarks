@@ -1,9 +1,11 @@
 import { Box, useDisclosure } from "@chakra-ui/react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/sidebar/Sidebar";
+import useKeyboardShortcuts from "../lib/useKeyboardShortcuts";
 
 export default function DashboardLayout() {
   const { isOpen, onOpen, onClose } = useDisclosure();
+  useKeyboardShortcuts();
 
   return (
     <Box minH="100vh">
