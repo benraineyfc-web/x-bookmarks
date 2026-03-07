@@ -180,6 +180,35 @@ async def api_delete_bookmarks():
     return {"status": "ok"}
 
 
+@app.post("/api/bookmarks/scrape-batch")
+async def api_scrape_batch(limit: int = Query(10, ge=1, le=50)):
+    """Scrape the next batch of un-scraped bookmarks."""
+    from bookmark_db import _get_conn
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT id, url FROM bookmarks WHERE scraped_json IS NULL AND url != '' LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+
+    results = {"scraped": 0, "failed": 0, "remaining": 0}
+    for row in rows:
+        try:
+            scraped = scrape_url(row["url"], crawl_links=True, token=X_API_BEARER_TOKEN or None)
+            save_scraped_data(row["id"], scraped)
+            results["scraped"] += 1
+        except Exception:
+            results["failed"] += 1
+
+    # Count remaining
+    conn = _get_conn()
+    results["remaining"] = conn.execute(
+        "SELECT COUNT(*) FROM bookmarks WHERE scraped_json IS NULL AND url != ''"
+    ).fetchone()[0]
+    conn.close()
+    return results
+
+
 # --- Frontend (served inline, no separate build step) ---
 
 FRONTEND_HTML = """<!DOCTYPE html>
@@ -473,6 +502,7 @@ nav a{color:#1d9bf0;text-decoration:none;font-size:.85rem}
   <div class="toolbar">
     <input type="text" id="search" placeholder="Search bookmarks...">
     <label>Import JSON<input type="file" id="import-file" accept=".json"></label>
+    <button id="scrape-all-btn">Scrape All</button>
     <button id="sort-btn" data-sort="newest">Newest first</button>
   </div>
 
@@ -613,6 +643,40 @@ nav a{color:#1d9bf0;text-decoration:none;font-size:.85rem}
       status.style.color = '#f87171';
     }
     e.target.value = '';
+  });
+
+  // Scrape All (batch)
+  $('#scrape-all-btn').addEventListener('click', async () => {
+    const btn = $('#scrape-all-btn');
+    btn.disabled = true;
+    const scrapeNext = async () => {
+      btn.textContent = 'Scraping batch...';
+      try {
+        const r = await fetch('/api/bookmarks/scrape-batch?limit=10', {method:'POST'});
+        if (!r.ok) throw new Error('Batch scrape failed');
+        const data = await r.json();
+        const msg = `Scraped ${data.scraped}, failed ${data.failed}, ${data.remaining} remaining`;
+        $('#import-status').style.display = '';
+        $('#import-status').textContent = msg;
+        $('#import-status').style.borderColor = '#1d4ed8';
+        $('#import-status').style.color = '#93c5fd';
+        loadStats();
+        loadBookmarks();
+        if (data.remaining > 0 && data.scraped > 0) {
+          btn.textContent = `Continue (${data.remaining} left)`;
+          btn.disabled = false;
+        } else {
+          btn.textContent = 'Scrape All';
+          btn.disabled = false;
+        }
+      } catch(err) {
+        btn.textContent = 'Scrape All';
+        btn.disabled = false;
+        $('#import-status').style.display = '';
+        $('#import-status').textContent = 'Error: ' + err.message;
+      }
+    };
+    await scrapeNext();
   });
 
   // Scrape a bookmark
