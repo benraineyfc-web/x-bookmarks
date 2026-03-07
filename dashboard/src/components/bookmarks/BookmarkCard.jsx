@@ -38,11 +38,17 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
   const [detailOpen, setDetailOpen] = useState(false);
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
 
-  const hasMedia = bookmark.media && bookmark.media.length > 0;
+  // Filter media to only items with valid URLs
+  const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http'));
+  const hasMedia = validMedia.length > 0;
   const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
   const hasUrls = bookmark.urls && bookmark.urls.length > 0;
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const hasNotes = bookmark.notes && bookmark.notes.trim();
+
+  // Extract author from tweet URL as fallback
+  const authorUsername = bookmark.author_username || (bookmark.url ? bookmark.url.split("x.com/")[1]?.split("/")[0] : "") || "";
+  const authorName = bookmark.author_name || authorUsername || "Unknown";
 
   const handleFavorite = async (e) => {
     e.stopPropagation();
@@ -72,9 +78,9 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
       >
         {/* Media preview at top of card */}
         {hasMedia && (
-          <div className={`overflow-hidden ${bookmark.media.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
-            {bookmark.media.slice(0, 4).map((m, i) => (
-              <div key={i} className={`relative overflow-hidden ${bookmark.media.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
+          <div className={`overflow-hidden ${validMedia.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
+            {validMedia.slice(0, 4).map((m, i) => (
+              <div key={i} className={`relative overflow-hidden ${validMedia.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
                 {(m.type === "video" || m.type === "animated_gif") ? (
                   <div className="relative w-full h-full min-h-[100px] flex items-center justify-center bg-muted">
                     <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
@@ -86,9 +92,9 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
                 ) : (
                   <img src={m.url} alt={m.alt_text || ""} className="w-full h-full object-cover" loading="lazy" />
                 )}
-                {i === 3 && bookmark.media.length > 4 && (
+                {i === 3 && validMedia.length > 4 && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">+{bookmark.media.length - 4}</span>
+                    <span className="text-white font-bold text-lg">+{validMedia.length - 4}</span>
                   </div>
                 )}
               </div>
@@ -109,12 +115,12 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
             )}
             <Avatar className="size-7">
               <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
-                {(bookmark.author_name || bookmark.author_username || "?")[0].toUpperCase()}
+                {authorName[0].toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate leading-tight">{bookmark.author_name || bookmark.author_username}</p>
-              <p className="text-[11px] text-muted-foreground leading-tight">@{bookmark.author_username}</p>
+              <p className="text-sm font-semibold truncate leading-tight">{authorName}</p>
+              {authorUsername && <p className="text-[11px] text-muted-foreground leading-tight">@{authorUsername}</p>}
             </div>
             <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
               <Button variant="ghost" size="icon" className="size-6" onClick={handleFavorite}>
@@ -192,7 +198,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
             </div>
             <div className="flex items-center gap-1.5">
               {/* Indicator icons for content types */}
-              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${bookmark.media.length} media`} />}
+              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${validMedia.length} media`} />}
               {hasScraped && <MdArticle className="size-3.5 text-blue-400" title="Has scraped content" />}
               {hasNotes && <span className="size-2 rounded-full bg-orange-400" title="Has notes" />}
               <span className="text-[10px] text-muted-foreground">{formatDate(bookmark.created_at)}</span>

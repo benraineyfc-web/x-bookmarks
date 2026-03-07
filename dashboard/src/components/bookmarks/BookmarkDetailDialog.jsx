@@ -93,12 +93,18 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
 
   if (!bookmark) return null;
 
-  const hasMedia = bookmark.media && bookmark.media.length > 0;
+  // Filter media to only items with valid URLs
+  const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http'));
+  const hasMedia = validMedia.length > 0;
   const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
   const hasUrls = bookmark.urls && bookmark.urls.length > 0;
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const hasActions = bookmark.actionItems && bookmark.actionItems.length > 0;
   const notesChanged = notes !== savedNotes;
+
+  // Extract author from tweet URL as fallback
+  const authorUsername = bookmark.author_username || (bookmark.url ? bookmark.url.split("x.com/")[1]?.split("/")[0] : "") || "";
+  const authorName = bookmark.author_name || authorUsername || "Unknown";
 
   const saveNotes = async () => {
     await db.bookmarks.update(bookmark.id, { notes });
@@ -132,11 +138,11 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
           {/* Media gallery at top */}
           {hasMedia && (
-            <div className={`grid gap-1 ${bookmark.media.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-              {bookmark.media.map((m, i) => (
+            <div className={`grid gap-1 ${validMedia.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+              {validMedia.map((m, i) => (
                 <div
                   key={i}
-                  className={`relative overflow-hidden group ${bookmark.media.length === 1 ? "max-h-[500px]" : "max-h-[250px]"} ${i === 0 && bookmark.media.length === 3 ? "row-span-2" : ""}`}
+                  className={`relative overflow-hidden group ${validMedia.length === 1 ? "max-h-[500px]" : "max-h-[250px]"} ${i === 0 && validMedia.length === 3 ? "row-span-2" : ""}`}
                 >
                   {(m.type === "video" || m.type === "animated_gif") ? (
                     m.video_url ? (
@@ -180,12 +186,12 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
             <div className="flex items-center gap-3 mb-4">
               <Avatar className="size-10">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
-                  {(bookmark.author_name || bookmark.author_username || "?")[0].toUpperCase()}
+                  {authorName[0].toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold">{bookmark.author_name || bookmark.author_username}</p>
-                <p className="text-sm text-muted-foreground">@{bookmark.author_username}</p>
+                <p className="font-semibold">{authorName}</p>
+                {authorUsername && <p className="text-sm text-muted-foreground">@{authorUsername}</p>}
               </div>
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" className="size-8" onClick={handleFavorite}>

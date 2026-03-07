@@ -57,9 +57,11 @@ export async function importBookmarks(normalizedBookmarks, autoTags = [], { upda
       const exists = await db.bookmarks.get(bm.id);
       if (exists) {
         if (updateExisting) {
-          // Update media/urls/quoteTweet if the new data has them and existing doesn't
+          // Update media/urls/quoteTweet - always prefer new data with valid URLs
           const updates = {};
-          if (bm.media && bm.media.length > 0 && (!exists.media || exists.media.length === 0)) {
+          const hasValidNewMedia = bm.media && bm.media.some(m => m.url && m.url.startsWith('http'));
+          const hasValidExistingMedia = exists.media && exists.media.some(m => m.url && m.url.startsWith('http'));
+          if (hasValidNewMedia && !hasValidExistingMedia) {
             updates.media = bm.media;
           }
           if (bm.urls && bm.urls.length > 0 && (!exists.urls || exists.urls.length === 0)) {
@@ -96,6 +98,11 @@ export async function importBookmarks(normalizedBookmarks, autoTags = [], { upda
       added++;
     }
   });
+
+  // Auto-recategorize when updating existing bookmarks to apply latest category rules
+  if (updateExisting && updated > 0) {
+    await recategorizeAll();
+  }
 
   return { added, skipped, updated };
 }
