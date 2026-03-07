@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   MdOpenInNew, MdFavorite, MdRepeat, MdVisibility,
   MdStar, MdStarBorder, MdDelete, MdPlayCircle,
@@ -34,21 +33,58 @@ function formatDate(dateStr) {
   try { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return dateStr; }
 }
 
+/** Image component that hides itself on error */
+function SafeImg({ src, alt, className, loading, onClick }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt || ""}
+      className={className}
+      loading={loading}
+      onClick={onClick}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** Extract author info with URL fallback */
+function getAuthorInfo(bookmark) {
+  let username = bookmark.author_username || "";
+  let name = bookmark.author_name || "";
+
+  // Fallback: extract from tweet URL
+  if (!username && bookmark.url) {
+    const match = bookmark.url.match(/(?:x\.com|twitter\.com)\/([^/]+)\/status/);
+    if (match) username = match[1];
+  }
+
+  if (!name) name = username;
+  if (!name) name = "Unknown";
+
+  return { username, name };
+}
+
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick, onDelete, onFavoriteToggle }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
+  const [hiddenMedia, setHiddenMedia] = useState(new Set());
 
   // Filter media to only items with valid URLs
   const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http'));
-  const hasMedia = validMedia.length > 0;
+  const visibleMedia = validMedia.filter((_, i) => !hiddenMedia.has(i));
+  const hasMedia = visibleMedia.length > 0;
   const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
   const hasUrls = bookmark.urls && bookmark.urls.length > 0;
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const hasNotes = bookmark.notes && bookmark.notes.trim();
 
-  // Extract author from tweet URL as fallback
-  const authorUsername = bookmark.author_username || (bookmark.url ? bookmark.url.split("x.com/")[1]?.split("/")[0] : "") || "";
-  const authorName = bookmark.author_name || authorUsername || "Unknown";
+  const { username: authorUsername, name: authorName } = getAuthorInfo(bookmark);
+
+  const handleMediaError = useCallback((index) => {
+    setHiddenMedia(prev => new Set(prev).add(index));
+  }, []);
 
   const handleFavorite = async (e) => {
     e.stopPropagation();
@@ -65,7 +101,6 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
   };
 
   const handleCardClick = (e) => {
-    // Don't open dialog if clicking interactive elements
     if (e.target.closest("button") || e.target.closest("a") || e.target.closest('[role="checkbox"]')) return;
     setDetailOpen(true);
   };
@@ -78,23 +113,29 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
       >
         {/* Media preview at top of card */}
         {hasMedia && (
-          <div className={`overflow-hidden ${validMedia.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
-            {validMedia.slice(0, 4).map((m, i) => (
-              <div key={i} className={`relative overflow-hidden ${validMedia.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
+          <div className={`overflow-hidden ${visibleMedia.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
+            {visibleMedia.slice(0, 4).map((m, i) => (
+              <div key={i} className={`relative overflow-hidden ${visibleMedia.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
                 {(m.type === "video" || m.type === "animated_gif") ? (
                   <div className="relative w-full h-full min-h-[100px] flex items-center justify-center bg-muted">
-                    <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <SafeImg src={m.preview_image_url || m.url} className="w-full h-full object-cover" loading="lazy" />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <MdPlayCircle className="size-8 text-white drop-shadow-lg" />
                     </div>
                     {m.type === "video" && <span className="absolute bottom-1 right-1 text-[9px] text-white bg-black/60 px-1.5 py-0.5 rounded">Video</span>}
                   </div>
                 ) : (
-                  <img src={m.url} alt={m.alt_text || ""} className="w-full h-full object-cover" loading="lazy" />
+                  <img
+                    src={m.url}
+                    alt={m.alt_text || ""}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    onError={() => handleMediaError(validMedia.indexOf(m))}
+                  />
                 )}
-                {i === 3 && validMedia.length > 4 && (
+                {i === 3 && visibleMedia.length > 4 && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">+{validMedia.length - 4}</span>
+                    <span className="text-white font-bold text-lg">+{visibleMedia.length - 4}</span>
                   </div>
                 )}
               </div>
@@ -133,7 +174,6 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
                 <MdDelete className="size-3.5 text-muted-foreground" />
               </Button>
             </div>
-            {/* Always show favorite icon when favorited */}
             {isFav && (
               <MdStar className="size-4 text-orange-400 shrink-0 group-hover:hidden" />
             )}
@@ -157,7 +197,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               {bookmark.quoteTweet.media?.length > 0 && (
                 <div className="flex gap-1 mt-1.5">
                   {bookmark.quoteTweet.media.slice(0, 2).map((m, i) => (
-                    <img key={i} src={m.url} alt="" className="h-12 w-16 object-cover rounded" loading="lazy" />
+                    <SafeImg key={i} src={m.url} className="h-12 w-16 object-cover rounded" loading="lazy" />
                   ))}
                 </div>
               )}
@@ -168,7 +208,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
           {hasUrls && !hasQuote && (
             <div className="border rounded-lg overflow-hidden mb-2 bg-muted/50">
               {bookmark.urls[0].thumbnail && (
-                <img src={bookmark.urls[0].thumbnail} alt="" className="w-full h-24 object-cover" loading="lazy" />
+                <SafeImg src={bookmark.urls[0].thumbnail} className="w-full h-24 object-cover" loading="lazy" />
               )}
               <div className="p-2">
                 {bookmark.urls[0].title && <p className="text-xs font-semibold line-clamp-1">{bookmark.urls[0].title}</p>}
@@ -197,8 +237,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground"><MdVisibility className="size-3" /> {formatNumber(bookmark.views)}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              {/* Indicator icons for content types */}
-              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${validMedia.length} media`} />}
+              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${visibleMedia.length} media`} />}
               {hasScraped && <MdArticle className="size-3.5 text-blue-400" title="Has scraped content" />}
               {hasNotes && <span className="size-2 rounded-full bg-orange-400" title="Has notes" />}
               <span className="text-[10px] text-muted-foreground">{formatDate(bookmark.created_at)}</span>

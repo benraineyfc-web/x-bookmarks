@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   MdOpenInNew, MdFavorite, MdRepeat, MdVisibility, MdSave,
   MdStar, MdStarBorder, MdCheckCircle, MdContentCopy, MdClose,
-  MdImage, MdPlayCircle, MdChat,
+  MdImage, MdPlayCircle, MdChat, MdBugReport,
 } from "react-icons/md";
 import { db } from "../../lib/db";
 import { getCategoryColor } from "../../lib/categorize";
@@ -45,7 +45,6 @@ function formatTime(dateStr) {
 function parseTweetText(text) {
   if (!text) return [];
   const parts = [];
-  // Match URLs, @mentions, #hashtags
   const regex = /(https?:\/\/[^\s]+)|(@\w+)|(#\w+)/g;
   let lastIndex = 0;
   let match;
@@ -84,27 +83,60 @@ function RichText({ text }) {
   );
 }
 
+/** Image that hides itself on load error */
+function SafeImg({ src, alt, className, loading, onClick }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt || ""}
+      className={className}
+      loading={loading}
+      onClick={onClick}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** Extract author info with URL fallback */
+function getAuthorInfo(bookmark) {
+  let username = bookmark.author_username || "";
+  let name = bookmark.author_name || "";
+  if (!username && bookmark.url) {
+    const match = bookmark.url.match(/(?:x\.com|twitter\.com)\/([^/]+)\/status/);
+    if (match) username = match[1];
+  }
+  if (!name) name = username;
+  if (!name) name = "Unknown";
+  return { username, name };
+}
+
 export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onFavoriteToggle, onDelete, onTagClick }) {
   const [notes, setNotes] = useState(bookmark?.notes || "");
   const [savedNotes, setSavedNotes] = useState(bookmark?.notes || "");
   const [isFav, setIsFav] = useState(bookmark?.favorite || false);
   const [lightboxImg, setLightboxImg] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [failedMedia, setFailedMedia] = useState(new Set());
 
   if (!bookmark) return null;
 
-  // Filter media to only items with valid URLs
+  // Filter media to only items with valid URLs, then remove ones that failed to load
   const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http'));
-  const hasMedia = validMedia.length > 0;
+  const visibleMedia = validMedia.filter((_, i) => !failedMedia.has(i));
+  const hasMedia = visibleMedia.length > 0;
   const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
   const hasUrls = bookmark.urls && bookmark.urls.length > 0;
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const hasActions = bookmark.actionItems && bookmark.actionItems.length > 0;
   const notesChanged = notes !== savedNotes;
 
-  // Extract author from tweet URL as fallback
-  const authorUsername = bookmark.author_username || (bookmark.url ? bookmark.url.split("x.com/")[1]?.split("/")[0] : "") || "";
-  const authorName = bookmark.author_name || authorUsername || "Unknown";
+  const { username: authorUsername, name: authorName } = getAuthorInfo(bookmark);
+
+  const handleMediaError = (index) => {
+    setFailedMedia(prev => new Set(prev).add(index));
+  };
 
   const saveNotes = async () => {
     await db.bookmarks.update(bookmark.id, { notes });
@@ -132,52 +164,67 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
     } catch {}
   };
 
+  // Build raw data for debug tab
+  const rawData = {
+    id: bookmark.id,
+    author_name: bookmark.author_name,
+    author_username: bookmark.author_username,
+    url: bookmark.url,
+    media: bookmark.media,
+    urls: bookmark.urls,
+    quoteTweet: bookmark.quoteTweet,
+    categories: bookmark.categories,
+    tags: bookmark.tags,
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
           {/* Media gallery at top */}
           {hasMedia && (
-            <div className={`grid gap-1 ${validMedia.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-              {validMedia.map((m, i) => (
-                <div
-                  key={i}
-                  className={`relative overflow-hidden group ${validMedia.length === 1 ? "max-h-[500px]" : "max-h-[250px]"} ${i === 0 && validMedia.length === 3 ? "row-span-2" : ""}`}
-                >
-                  {(m.type === "video" || m.type === "animated_gif") ? (
-                    m.video_url ? (
-                      <video
-                        src={m.video_url}
-                        poster={m.preview_image_url || m.url}
-                        controls
-                        playsInline
-                        loop={m.type === "animated_gif"}
-                        autoPlay={m.type === "animated_gif"}
-                        muted={m.type === "animated_gif"}
-                        className="w-full h-full object-contain bg-black"
-                      />
-                    ) : (
-                      <div className="relative w-full h-full min-h-[180px] bg-muted flex items-center justify-center cursor-pointer" onClick={() => window.open(bookmark.url, "_blank")}>
-                        {(m.preview_image_url || m.url) && (
-                          <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" />
-                        )}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                          <MdPlayCircle className="size-12 text-white drop-shadow-lg" />
+            <div className={`grid gap-1 ${visibleMedia.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+              {visibleMedia.map((m, i) => {
+                const origIndex = validMedia.indexOf(m);
+                return (
+                  <div
+                    key={i}
+                    className={`relative overflow-hidden group ${visibleMedia.length === 1 ? "max-h-[500px]" : "max-h-[250px]"} ${i === 0 && visibleMedia.length === 3 ? "row-span-2" : ""}`}
+                  >
+                    {(m.type === "video" || m.type === "animated_gif") ? (
+                      m.video_url ? (
+                        <video
+                          src={m.video_url}
+                          poster={m.preview_image_url || m.url}
+                          controls
+                          playsInline
+                          loop={m.type === "animated_gif"}
+                          autoPlay={m.type === "animated_gif"}
+                          muted={m.type === "animated_gif"}
+                          className="w-full h-full object-contain bg-black"
+                        />
+                      ) : (
+                        <div className="relative w-full h-full min-h-[180px] bg-muted flex items-center justify-center cursor-pointer" onClick={() => window.open(bookmark.url, "_blank")}>
+                          <SafeImg src={m.preview_image_url || m.url} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                            <MdPlayCircle className="size-12 text-white drop-shadow-lg" />
+                          </div>
+                          <span className="absolute bottom-2 right-2 text-[10px] text-white bg-black/60 px-2 py-0.5 rounded">View on X</span>
                         </div>
-                        <span className="absolute bottom-2 right-2 text-[10px] text-white bg-black/60 px-2 py-0.5 rounded">View on X</span>
-                      </div>
-                    )
-                  ) : (
-                    <img
-                      src={m.url}
-                      alt={m.alt_text || ""}
-                      className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      onClick={() => setLightboxImg(m.url)}
-                    />
-                  )}
-                </div>
-              ))}
+                      )
+                    ) : (
+                      <img
+                        src={m.url}
+                        alt={m.alt_text || ""}
+                        className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                        onClick={() => setLightboxImg(m.url)}
+                        onError={() => handleMediaError(origIndex)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -224,7 +271,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
                 {bookmark.quoteTweet.media?.length > 0 && (
                   <div className={`grid gap-1 mt-3 ${bookmark.quoteTweet.media.length === 1 ? "" : "grid-cols-2"}`}>
                     {bookmark.quoteTweet.media.map((m, i) => (
-                      <img key={i} src={m.url} alt="" className="w-full max-h-[200px] object-cover rounded-lg cursor-pointer" loading="lazy" onClick={() => setLightboxImg(m.url)} />
+                      <SafeImg key={i} src={m.url} className="w-full max-h-[200px] object-cover rounded-lg cursor-pointer" loading="lazy" onClick={() => setLightboxImg(m.url)} />
                     ))}
                   </div>
                 )}
@@ -237,7 +284,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
                 {bookmark.urls.map((u, i) => (
                   <a key={i} href={u.url} target="_blank" rel="noopener noreferrer" className="block border rounded-xl overflow-hidden hover:bg-muted/50 transition-colors">
                     {u.thumbnail && (
-                      <img src={u.thumbnail} alt="" className="w-full h-32 object-cover" loading="lazy" />
+                      <SafeImg src={u.thumbnail} className="w-full h-32 object-cover" loading="lazy" />
                     )}
                     <div className="p-3">
                       {u.title && <p className="text-sm font-semibold line-clamp-2">{u.title}</p>}
@@ -316,64 +363,74 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
               </Button>
             </div>
 
-            {/* Tabbed content: Notes, Scraped, Actions */}
-            {(hasScraped || hasActions || true) && (
-              <Tabs defaultValue="notes" className="mt-5">
-                <TabsList>
-                  <TabsTrigger value="notes">Notes</TabsTrigger>
-                  {hasActions && <TabsTrigger value="actions">Actions ({bookmark.actionItems.length})</TabsTrigger>}
-                  {hasScraped && <TabsTrigger value="scraped">Linked Content</TabsTrigger>}
-                </TabsList>
+            {/* Tabbed content: Notes, Scraped, Actions, Debug */}
+            <Tabs defaultValue="notes" className="mt-5">
+              <TabsList>
+                <TabsTrigger value="notes">Notes</TabsTrigger>
+                {hasActions && <TabsTrigger value="actions">Actions ({bookmark.actionItems.length})</TabsTrigger>}
+                {hasScraped && <TabsTrigger value="scraped">Linked Content</TabsTrigger>}
+                <TabsTrigger value="debug" className="text-muted-foreground">
+                  <MdBugReport className="size-3.5 mr-1" /> Raw Data
+                </TabsTrigger>
+              </TabsList>
 
-                <TabsContent value="notes" className="mt-3">
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Add personal notes about this bookmark..."
-                    className="min-h-[100px] text-sm"
-                  />
-                  {notesChanged && (
-                    <Button size="sm" className="mt-2" onClick={saveNotes}>
-                      <MdSave className="mr-1 size-3.5" /> Save Notes
-                    </Button>
-                  )}
-                </TabsContent>
-
-                {hasActions && (
-                  <TabsContent value="actions" className="mt-3">
-                    <div className="bg-green-50 rounded-lg p-4 space-y-2">
-                      {bookmark.actionItems.map((item, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <MdCheckCircle className="size-4 text-green-500 mt-0.5 shrink-0" />
-                          <span>{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </TabsContent>
+              <TabsContent value="notes" className="mt-3">
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add personal notes about this bookmark..."
+                  className="min-h-[100px] text-sm"
+                />
+                {notesChanged && (
+                  <Button size="sm" className="mt-2" onClick={saveNotes}>
+                    <MdSave className="mr-1 size-3.5" /> Save Notes
+                  </Button>
                 )}
+              </TabsContent>
 
-                {hasScraped && (
-                  <TabsContent value="scraped" className="mt-3 space-y-3">
-                    {bookmark.scraped_json.articles?.map((article, i) => (
-                      <div key={i} className="bg-muted rounded-lg p-4">
-                        <p className="font-semibold mb-1">{article.title || "Linked Article"}</p>
-                        {article.description && (
-                          <p className="text-sm text-muted-foreground mb-2">{article.description}</p>
-                        )}
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                          {article.markdown || article.text || ""}
-                        </p>
-                        {article.url && (
-                          <a href={article.url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
-                            <MdOpenInNew className="size-3.5" /> Open article
-                          </a>
-                        )}
+              {hasActions && (
+                <TabsContent value="actions" className="mt-3">
+                  <div className="bg-green-50 rounded-lg p-4 space-y-2">
+                    {bookmark.actionItems.map((item, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm">
+                        <MdCheckCircle className="size-4 text-green-500 mt-0.5 shrink-0" />
+                        <span>{item}</span>
                       </div>
                     ))}
-                  </TabsContent>
-                )}
-              </Tabs>
-            )}
+                  </div>
+                </TabsContent>
+              )}
+
+              {hasScraped && (
+                <TabsContent value="scraped" className="mt-3 space-y-3">
+                  {bookmark.scraped_json.articles?.map((article, i) => (
+                    <div key={i} className="bg-muted rounded-lg p-4">
+                      <p className="font-semibold mb-1">{article.title || "Linked Article"}</p>
+                      {article.description && (
+                        <p className="text-sm text-muted-foreground mb-2">{article.description}</p>
+                      )}
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                        {article.markdown || article.text || ""}
+                      </p>
+                      {article.url && (
+                        <a href={article.url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2">
+                          <MdOpenInNew className="size-3.5" /> Open article
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </TabsContent>
+              )}
+
+              <TabsContent value="debug" className="mt-3">
+                <div className="bg-muted rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Raw stored data for this bookmark (for debugging):</p>
+                  <pre className="text-[11px] font-mono whitespace-pre-wrap break-all overflow-auto max-h-[300px] bg-background rounded p-3 border">
+                    {JSON.stringify(rawData, null, 2)}
+                  </pre>
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </DialogContent>
       </Dialog>
