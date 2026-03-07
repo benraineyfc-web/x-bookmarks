@@ -280,11 +280,12 @@ function normalizeBird(item) {
   if (item.media && item.media.length > 0) {
     media = item.media.map((m) => {
       if (typeof m === "string") return { type: "photo", url: m, preview_image_url: m };
+      const type = m.type || "photo";
       return {
-        type: m.type || "photo",
-        url: m.url || m.media_url_https || "",
-        preview_image_url: m.preview_image_url || m.media_url_https || m.url || "",
-        video_url: m.video_url || "",
+        type,
+        url: (type === "photo") ? (m.original || m.url || m.media_url_https || "") : (m.thumbnail || m.url || m.media_url_https || ""),
+        preview_image_url: m.preview_image_url || m.media_url_https || m.thumbnail || m.url || "",
+        video_url: m.video_url || ((type === "video" || type === "animated_gif") ? m.original : "") || "",
         alt_text: m.alt_text || "",
       };
     });
@@ -322,23 +323,33 @@ function normalizeTampermonkey(item) {
     media = item.media.map((m) => {
       if (typeof m === "string") return { type: "photo", url: m, preview_image_url: m };
       const type = m.type || "photo";
+      // Support multiple field naming conventions:
+      // - media_url_https / media_url: Twitter API standard
+      // - thumbnail: some export tools use this for poster images
+      // - original: some export tools use this for full-size media / video URLs
       const result = {
         type,
-        url: m.media_url_https || m.media_url || m.url || "",
-        preview_image_url: m.media_url_https || m.media_url || m.preview_image_url || "",
+        url: (type === "photo") ? (m.original || m.media_url_https || m.media_url || m.url || "") : (m.media_url_https || m.media_url || m.thumbnail || m.url || ""),
+        preview_image_url: m.media_url_https || m.media_url || m.preview_image_url || m.thumbnail || "",
         alt_text: m.ext_alt_text || m.alt_text || "",
       };
-      // Extract video URL from video_info
-      if ((type === "video" || type === "animated_gif") && m.video_info) {
-        const variants = m.video_info.variants || [];
-        const mp4s = variants.filter((v) => v.content_type === "video/mp4");
-        if (mp4s.length > 0) {
-          mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-          result.video_url = mp4s[0].url;
-        } else if (variants.length > 0) {
-          result.video_url = variants[0].url;
+      // Extract video URL from video_info or original field
+      if (type === "video" || type === "animated_gif") {
+        if (m.video_info) {
+          const variants = m.video_info.variants || [];
+          const mp4s = variants.filter((v) => v.content_type === "video/mp4");
+          if (mp4s.length > 0) {
+            mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+            result.video_url = mp4s[0].url;
+          } else if (variants.length > 0) {
+            result.video_url = variants[0].url;
+          }
         }
-        result.preview_image_url = m.media_url_https || m.media_url || "";
+        // "original" field often has the direct video URL
+        if (!result.video_url && m.original) {
+          result.video_url = m.original;
+        }
+        result.preview_image_url = m.media_url_https || m.media_url || m.thumbnail || "";
       }
       return result;
     });
@@ -352,8 +363,8 @@ function normalizeTampermonkey(item) {
     if (qs.media && Array.isArray(qs.media)) {
       qsMedia = qs.media.map((m) => ({
         type: m.type || "photo",
-        url: m.media_url_https || m.media_url || m.url || "",
-        preview_image_url: m.media_url_https || m.media_url || "",
+        url: m.original || m.media_url_https || m.media_url || m.url || "",
+        preview_image_url: m.media_url_https || m.media_url || m.thumbnail || "",
         alt_text: m.ext_alt_text || m.alt_text || "",
       }));
     }
@@ -579,11 +590,12 @@ function normalizeGeneric(item) {
   if (item.media && Array.isArray(item.media)) {
     media = item.media.map((m) => {
       if (typeof m === "string") return { type: "photo", url: m, preview_image_url: m };
+      const type = m.type || "photo";
       return {
-        type: m.type || "photo",
-        url: m.url || m.media_url_https || "",
-        preview_image_url: m.preview_image_url || m.media_url_https || m.url || "",
-        video_url: m.video_url || "",
+        type,
+        url: m.original || m.url || m.media_url_https || "",
+        preview_image_url: m.preview_image_url || m.media_url_https || m.thumbnail || m.url || "",
+        video_url: m.video_url || ((type === "video" || type === "animated_gif") ? m.original : "") || "",
         alt_text: m.alt_text || "",
       };
     });
