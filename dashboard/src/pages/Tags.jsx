@@ -1,62 +1,34 @@
 import { useEffect, useState } from "react";
-import {
-  Box,
-  SimpleGrid,
-  Text,
-  Flex,
-  Tag,
-  TagLabel,
-  Button,
-  Input,
-  HStack,
-  useColorModeValue,
-  IconButton,
-} from "@chakra-ui/react";
-import { MdDelete, MdAdd, MdEdit } from "react-icons/md";
-import { useOutletContext, useNavigate } from "react-router-dom";
-import Navbar from "../components/navbar/Navbar";
-import Card from "../components/card/Card";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { MdDelete, MdEdit } from "react-icons/md";
 import { db } from "../lib/db";
 
 export default function Tags() {
-  const { onOpenSidebar } = useOutletContext();
   const navigate = useNavigate();
   const [tagCounts, setTagCounts] = useState([]);
   const [editingTag, setEditingTag] = useState(null);
   const [editValue, setEditValue] = useState("");
-  const textColor = useColorModeValue("secondaryGray.900", "white");
-  const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
-  const brandColor = useColorModeValue("brand.500", "brand.400");
 
   const loadTags = async () => {
     const all = await db.bookmarks.toArray();
     const counts = new Map();
     for (const bm of all) {
-      if (bm.tags) {
-        for (const t of bm.tags) {
-          counts.set(t, (counts.get(t) || 0) + 1);
-        }
-      }
+      if (bm.tags) for (const t of bm.tags) counts.set(t, (counts.get(t) || 0) + 1);
     }
-    setTagCounts(
-      [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, count]) => ({ name, count }))
-    );
+    setTagCounts([...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })));
   };
 
-  useEffect(() => {
-    loadTags();
-  }, []);
+  useEffect(() => { loadTags(); }, []);
 
   const removeTag = async (tagName) => {
     const all = await db.bookmarks.where("tags").equals(tagName).toArray();
     await db.transaction("rw", db.bookmarks, async () => {
-      for (const bm of all) {
-        await db.bookmarks.update(bm.id, {
-          tags: (bm.tags || []).filter((t) => t !== tagName),
-        });
-      }
+      for (const bm of all) await db.bookmarks.update(bm.id, { tags: (bm.tags || []).filter((t) => t !== tagName) });
     });
     loadTags();
   };
@@ -74,92 +46,67 @@ export default function Tags() {
   };
 
   return (
-    <Box>
-      <Navbar onOpen={onOpenSidebar} title="Tags" />
+    <div>
+      <div className="flex items-center gap-3 mb-6">
+        <SidebarTrigger />
+        <h1 className="text-lg font-bold">Tags</h1>
+      </div>
 
-      <Card mb="20px">
-        <Text fontSize="sm" color={subColor} mb="4px">
-          Tags are applied during import or from the Bookmarks page. Here you
-          can manage and browse them.
-        </Text>
+      <Card className="mb-5">
+        <CardContent className="p-4">
+          <p className="text-sm text-muted-foreground">
+            Tags are applied during import or from the Bookmarks page. Here you can manage and browse them.
+          </p>
+        </CardContent>
       </Card>
 
       {tagCounts.length === 0 ? (
-        <Card>
-          <Text color={subColor} textAlign="center" py="40px">
-            No tags yet. Add tags when importing bookmarks or from the Bookmarks
-            page.
-          </Text>
-        </Card>
+        <Card><CardContent className="p-4 text-center text-muted-foreground py-10">
+          No tags yet. Add tags when importing bookmarks or from the Bookmarks page.
+        </CardContent></Card>
       ) : (
-        <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="16px">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {tagCounts.map(({ name, count }) => (
             <Card key={name}>
-              {editingTag === name ? (
-                <HStack>
-                  <Input
-                    size="sm"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        renameTag(name, editValue.trim());
-                        setEditingTag(null);
-                      }
-                      if (e.key === "Escape") setEditingTag(null);
-                    }}
-                    borderRadius="12px"
-                    autoFocus
-                  />
-                  <Button size="xs" onClick={() => { renameTag(name, editValue.trim()); setEditingTag(null); }}>
-                    Save
-                  </Button>
-                  <Button size="xs" variant="ghost" onClick={() => setEditingTag(null)}>
-                    Cancel
-                  </Button>
-                </HStack>
-              ) : (
-                <Flex justify="space-between" align="center">
-                  <Flex align="center" gap="10px">
-                    <Tag
-                      size="lg"
-                      borderRadius="full"
-                      colorScheme="brand"
-                      cursor="pointer"
-                      onClick={() =>
-                        navigate(`/bookmarks?tag=${encodeURIComponent(name)}`)
-                      }
-                    >
-                      <TagLabel>{name}</TagLabel>
-                    </Tag>
-                    <Text fontSize="sm" fontWeight="600" color={textColor}>
-                      {count} bookmark{count !== 1 ? "s" : ""}
-                    </Text>
-                  </Flex>
-                  <HStack>
-                    <IconButton
-                      icon={<MdEdit />}
-                      size="xs"
-                      variant="ghost"
-                      color={subColor}
-                      aria-label="Rename tag"
-                      onClick={() => { setEditingTag(name); setEditValue(name); }}
+              <CardContent className="p-4">
+                {editingTag === name ? (
+                  <div className="flex gap-2">
+                    <Input
+                      className="h-8 text-sm"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { renameTag(name, editValue.trim()); setEditingTag(null); }
+                        if (e.key === "Escape") setEditingTag(null);
+                      }}
+                      autoFocus
                     />
-                    <IconButton
-                      icon={<MdDelete />}
-                      size="xs"
-                      variant="ghost"
-                      color="red.400"
-                      aria-label="Delete tag"
-                      onClick={() => removeTag(name)}
-                    />
-                  </HStack>
-                </Flex>
-              )}
+                    <Button size="sm" onClick={() => { renameTag(name, editValue.trim()); setEditingTag(null); }}>Save</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setEditingTag(null)}>Cancel</Button>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2.5">
+                      <Badge className="cursor-pointer" onClick={() => navigate(`/bookmarks?tag=${encodeURIComponent(name)}`)}>
+                        {name}
+                      </Badge>
+                      <span className="text-sm font-semibold">{count} bookmark{count !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="size-7" onClick={() => { setEditingTag(name); setEditValue(name); }}>
+                        <MdEdit className="size-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="size-7 text-destructive" onClick={() => removeTag(name)}>
+                        <MdDelete className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
             </Card>
           ))}
-        </SimpleGrid>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }

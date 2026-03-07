@@ -1,40 +1,19 @@
 import { useEffect, useState } from "react";
-import {
-  Box,
-  SimpleGrid,
-  Text,
-  Button,
-  Textarea,
-  Flex,
-  useColorModeValue,
-  useToast,
-  HStack,
-  Badge,
-  Icon,
-  NumberInput,
-  NumberInputField,
-  NumberInputStepper,
-  NumberIncrementStepper,
-  NumberDecrementStepper,
-  Select,
-  Tabs,
-  TabList,
-  Tab,
-} from "@chakra-ui/react";
+import { useLocation } from "react-router-dom";
+import { toast } from "sonner";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { MdContentCopy, MdDownload, MdArrowForward } from "react-icons/md";
-import { useOutletContext, useLocation } from "react-router-dom";
-import Navbar from "../components/navbar/Navbar";
-import Card from "../components/card/Card";
 import { db } from "../lib/db";
 import { promptTemplates, generatePrompt } from "../lib/prompts";
 
 const TEMPLATE_CATEGORIES = ["All", "Product", "Business", "Technical", "Marketing", "Operations", "Research", "AI"];
 
 export default function Export() {
-  const { onOpenSidebar } = useOutletContext();
   const location = useLocation();
-  const toast = useToast();
-
   const [bookmarks, setBookmarks] = useState([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [activeTemplate, setActiveTemplate] = useState(null);
@@ -43,40 +22,24 @@ export default function Export() {
   const [sortExportBy, setSortExportBy] = useState("likes-desc");
   const [filterCat, setFilterCat] = useState("All");
 
-  const textColor = useColorModeValue("secondaryGray.900", "white");
-  const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
-  const brandColor = useColorModeValue("brand.500", "brand.400");
-  const cardBg = useColorModeValue("white", "navy.700");
-
   useEffect(() => {
     async function load() {
       const all = await db.bookmarks.toArray();
       setBookmarks(all);
-      if (location.state?.selectedIds) {
-        setSelectedIds(new Set(location.state.selectedIds));
-      }
+      if (location.state?.selectedIds) setSelectedIds(new Set(location.state.selectedIds));
     }
     load();
   }, [location.state]);
 
   const getExportBookmarks = () => {
-    let pool = selectedIds.size > 0
-      ? bookmarks.filter((bm) => selectedIds.has(bm.id))
-      : bookmarks;
-
+    let pool = selectedIds.size > 0 ? bookmarks.filter((bm) => selectedIds.has(bm.id)) : bookmarks;
     const [field, dir] = sortExportBy.split("-");
-    pool = [...pool].sort((a, b) => {
-      const va = a[field] || 0;
-      const vb = b[field] || 0;
-      return dir === "desc" ? vb - va : va - vb;
-    });
-
+    pool = [...pool].sort((a, b) => { const va = a[field] || 0, vb = b[field] || 0; return dir === "desc" ? vb - va : va - vb; });
     return pool.slice(0, limit);
   };
 
   const handleSelectTemplate = (key) => {
-    const exportBms = getExportBookmarks();
-    const prompt = generatePrompt(key, exportBms);
+    const prompt = generatePrompt(key, getExportBookmarks());
     setActiveTemplate(key);
     setGeneratedPrompt(prompt);
   };
@@ -84,14 +47,7 @@ export default function Export() {
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(generatedPrompt);
-      toast({
-        title: "Copied to clipboard",
-        description: "Paste into Claude to get started",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-        position: "top",
-      });
+      toast.success("Copied to clipboard", { description: "Paste into Claude to get started" });
     } catch {
       const ta = document.createElement("textarea");
       ta.value = generatedPrompt;
@@ -99,13 +55,12 @@ export default function Export() {
       ta.select();
       document.execCommand("copy");
       ta.remove();
-      toast({ title: "Copied!", status: "success", duration: 2000, position: "top" });
+      toast.success("Copied!");
     }
   };
 
   const downloadJSON = () => {
-    const exportBms = getExportBookmarks();
-    const blob = new Blob([JSON.stringify(exportBms, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(getExportBookmarks(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -130,174 +85,93 @@ export default function Export() {
   );
 
   return (
-    <Box>
-      <Navbar onOpen={onOpenSidebar} title="Generate Documents" />
+    <div>
+      <div className="flex items-center gap-3 mb-6">
+        <SidebarTrigger />
+        <h1 className="text-lg font-bold">Generate Documents</h1>
+      </div>
 
-      {/* Config */}
-      <Card mb="20px">
-        <Text fontSize="sm" fontWeight="700" color={textColor} mb="12px">
-          Export Settings
-        </Text>
-        <Flex gap="16px" wrap="wrap" align="center">
-          <Box>
-            <Text fontSize="xs" color={subColor} mb="4px">
-              Max bookmarks to include
-            </Text>
-            <NumberInput
-              size="sm"
-              value={limit}
-              onChange={(_, v) => setLimit(v)}
-              min={1}
-              max={200}
-              maxW="100px"
-            >
-              <NumberInputField borderRadius="12px" />
-              <NumberInputStepper>
-                <NumberIncrementStepper />
-                <NumberDecrementStepper />
-              </NumberInputStepper>
-            </NumberInput>
-          </Box>
-
-          <Box>
-            <Text fontSize="xs" color={subColor} mb="4px">
-              Sort by
-            </Text>
-            <Select
-              size="sm"
-              value={sortExportBy}
-              onChange={(e) => setSortExportBy(e.target.value)}
-              borderRadius="12px"
-              maxW="180px"
-            >
-              <option value="likes-desc">Most Liked</option>
-              <option value="retweets-desc">Most Retweeted</option>
-              <option value="views-desc">Most Viewed</option>
-              <option value="created_at-desc">Newest</option>
-            </Select>
-          </Box>
-
-          <Box>
-            <Text fontSize="xs" color={subColor} mb="4px">
-              Source
-            </Text>
-            <Badge colorScheme={selectedIds.size > 0 ? "brand" : "gray"} fontSize="sm" borderRadius="8px" px="8px" py="4px">
-              {selectedIds.size > 0
-                ? `${selectedIds.size} selected`
-                : `All (${bookmarks.length})`}
-            </Badge>
-          </Box>
-        </Flex>
-
-        <HStack mt="16px">
-          <Button
-            size="sm"
-            leftIcon={<MdDownload />}
-            variant="outline"
-            borderRadius="12px"
-            onClick={downloadJSON}
-          >
-            Download Raw JSON
-          </Button>
-        </HStack>
+      <Card className="mb-5">
+        <CardContent className="p-4">
+          <p className="text-sm font-bold mb-3">Export Settings</p>
+          <div className="flex gap-4 flex-wrap items-center">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Max bookmarks to include</p>
+              <Input type="number" className="h-8 text-sm w-[100px]" value={limit} onChange={(e) => setLimit(Number(e.target.value))} min={1} max={200} />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Sort by</p>
+              <select className="h-8 text-sm rounded-md border bg-background px-2" value={sortExportBy} onChange={(e) => setSortExportBy(e.target.value)}>
+                <option value="likes-desc">Most Liked</option>
+                <option value="retweets-desc">Most Retweeted</option>
+                <option value="views-desc">Most Viewed</option>
+                <option value="created_at-desc">Newest</option>
+              </select>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Source</p>
+              <Badge variant={selectedIds.size > 0 ? "default" : "secondary"}>
+                {selectedIds.size > 0 ? `${selectedIds.size} selected` : `All (${bookmarks.length})`}
+              </Badge>
+            </div>
+          </div>
+          <div className="mt-4">
+            <Button variant="outline" size="sm" onClick={downloadJSON}><MdDownload className="mr-1" /> Download Raw JSON</Button>
+          </div>
+        </CardContent>
       </Card>
 
-      {/* Template category tabs */}
-      <Text fontSize="sm" fontWeight="700" color={textColor} mb="12px">
-        Choose a Document Template
-      </Text>
-      <Tabs variant="soft-rounded" colorScheme="brand" mb="16px" size="sm">
-        <TabList flexWrap="wrap" gap="4px">
-          {TEMPLATE_CATEGORIES.map((cat) => (
-            <Tab
-              key={cat}
-              onClick={() => setFilterCat(cat)}
-              borderRadius="full"
-              fontSize="xs"
-              fontWeight="600"
-            >
-              {cat}
-            </Tab>
-          ))}
-        </TabList>
-      </Tabs>
+      <p className="text-sm font-bold mb-3">Choose a Document Template</p>
+      <div className="flex gap-1 flex-wrap mb-4">
+        {TEMPLATE_CATEGORIES.map((cat) => (
+          <Button key={cat} variant={filterCat === cat ? "default" : "outline"} size="sm" className="rounded-full text-xs" onClick={() => setFilterCat(cat)}>
+            {cat}
+          </Button>
+        ))}
+      </div>
 
-      <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} gap="16px" mb="20px">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-5">
         {filteredTemplates.map(([key, tmpl]) => (
           <Card
             key={key}
-            cursor="pointer"
+            className={`cursor-pointer transition-all hover:-translate-y-0.5 ${activeTemplate === key ? "ring-2 ring-primary" : ""}`}
             onClick={() => handleSelectTemplate(key)}
-            border="2px solid"
-            borderColor={activeTemplate === key ? brandColor : "transparent"}
-            _hover={{
-              borderColor: activeTemplate === key ? brandColor : "gray.200",
-              transform: "translateY(-2px)",
-            }}
-            transition="all 0.15s"
           >
-            <Flex align="center" gap="8px" mb="8px">
-              <Text fontSize="xl">{tmpl.icon}</Text>
-              <Box>
-                <Text fontSize="sm" fontWeight="700" color={textColor}>
-                  {tmpl.name}
-                </Text>
-                <Badge colorScheme="brand" fontSize="9px" borderRadius="full">
-                  {tmpl.category}
-                </Badge>
-              </Box>
-            </Flex>
-            <Text fontSize="xs" color={subColor}>
-              {tmpl.description}
-            </Text>
-            <Flex justify="flex-end" mt="12px">
-              <Icon as={MdArrowForward} color={brandColor} />
-            </Flex>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xl">{tmpl.icon}</span>
+                <div>
+                  <p className="text-sm font-bold">{tmpl.name}</p>
+                  <Badge variant="secondary" className="text-[9px]">{tmpl.category}</Badge>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">{tmpl.description}</p>
+              <div className="flex justify-end mt-3">
+                <MdArrowForward className="text-primary" />
+              </div>
+            </CardContent>
           </Card>
         ))}
-      </SimpleGrid>
+      </div>
 
-      {/* Generated prompt */}
       {generatedPrompt && (
         <Card>
-          <Flex justify="space-between" align="center" mb="12px" wrap="wrap" gap="8px">
-            <Text fontSize="sm" fontWeight="700" color={textColor}>
-              Generated Prompt ({getExportBookmarks().length} bookmarks)
-            </Text>
-            <HStack>
-              <Button
-                size="sm"
-                leftIcon={<MdContentCopy />}
-                colorScheme="brand"
-                variant="solid"
-                bg={brandColor}
-                borderRadius="12px"
-                onClick={copyToClipboard}
-              >
-                Copy to Clipboard
-              </Button>
-              <Button
-                size="sm"
-                leftIcon={<MdDownload />}
-                variant="outline"
-                borderRadius="12px"
-                onClick={downloadPrompt}
-              >
-                Download .txt
-              </Button>
-            </HStack>
-          </Flex>
-          <Textarea
-            value={generatedPrompt}
-            readOnly
-            minH="300px"
-            fontFamily="mono"
-            fontSize="xs"
-            borderRadius="12px"
-            bg={cardBg}
-          />
+          <CardContent className="p-4">
+            <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+              <p className="text-sm font-bold">Generated Prompt ({getExportBookmarks().length} bookmarks)</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={copyToClipboard}><MdContentCopy className="mr-1" /> Copy to Clipboard</Button>
+                <Button variant="outline" size="sm" onClick={downloadPrompt}><MdDownload className="mr-1" /> Download .txt</Button>
+              </div>
+            </div>
+            <textarea
+              className="w-full min-h-[300px] font-mono text-xs rounded-lg border bg-muted p-3 resize-y"
+              value={generatedPrompt}
+              readOnly
+            />
+          </CardContent>
         </Card>
       )}
-    </Box>
+    </div>
   );
 }

@@ -1,41 +1,25 @@
 import { useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Box,
-  Flex,
-  Text,
-  Tag,
-  TagLabel,
-  HStack,
-  IconButton,
-  useColorModeValue,
-  Tooltip,
-  Link,
-  Collapse,
-  Textarea,
-  Button,
-  Badge,
-  List,
-  ListItem,
-  ListIcon,
-  Avatar,
-} from "@chakra-ui/react";
-import {
-  MdOpenInNew,
-  MdFavorite,
-  MdFavoriteBorder,
-  MdRepeat,
-  MdVisibility,
-  MdExpandMore,
-  MdExpandLess,
-  MdSave,
-  MdDelete,
-  MdStar,
-  MdStarBorder,
-  MdCheckCircle,
+  MdOpenInNew, MdFavorite, MdRepeat, MdVisibility,
+  MdExpandMore, MdExpandLess, MdSave, MdDelete,
+  MdStar, MdStarBorder, MdCheckCircle,
 } from "react-icons/md";
-import Card from "../card/Card";
 import { db } from "../../lib/db";
 import { getCategoryColor } from "../../lib/categorize";
+
+const BADGE_VARIANTS = {
+  purple: "bg-purple-100 text-purple-700", blue: "bg-blue-100 text-blue-700",
+  pink: "bg-pink-100 text-pink-700", cyan: "bg-cyan-100 text-cyan-700",
+  teal: "bg-teal-100 text-teal-700", orange: "bg-orange-100 text-orange-700",
+  red: "bg-red-100 text-red-700", green: "bg-green-100 text-green-700",
+  yellow: "bg-yellow-100 text-yellow-700", gray: "bg-gray-100 text-gray-700",
+};
 
 function formatNumber(n) {
   if (!n) return "0";
@@ -47,11 +31,8 @@ function formatNumber(n) {
 function formatDate(dateStr) {
   if (!dateStr) return "";
   try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  } catch {
-    return dateStr;
-  }
+    return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  } catch { return dateStr; }
 }
 
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick, onDelete, onFavoriteToggle }) {
@@ -59,15 +40,6 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
   const [notes, setNotes] = useState(bookmark.notes || "");
   const [savedNotes, setSavedNotes] = useState(bookmark.notes || "");
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
-
-  const textColor = useColorModeValue("gray.800", "white");
-  const subColor = useColorModeValue("gray.500", "gray.400");
-  const borderColor = useColorModeValue("gray.100", "whiteAlpha.100");
-  const selectedBorder = useColorModeValue("brand.500", "brand.400");
-  const codeBg = useColorModeValue("gray.50", "navy.900");
-  const actionBg = useColorModeValue("green.50", "green.900");
-  const cardHoverBg = useColorModeValue("gray.50", "navy.700");
-  const metaBg = useColorModeValue("gray.50", "whiteAlpha.50");
 
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const notesChanged = notes !== savedNotes;
@@ -77,11 +49,6 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
     e.stopPropagation();
     await db.bookmarks.update(bookmark.id, { notes });
     setSavedNotes(notes);
-  };
-
-  const toggleExpand = (e) => {
-    e.stopPropagation();
-    setExpanded((v) => !v);
   };
 
   const handleDelete = async (e) => {
@@ -100,268 +67,124 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
 
   return (
     <Card
-      border="1.5px solid"
-      borderColor={isSelected ? selectedBorder : "transparent"}
-      cursor="pointer"
+      className={`cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${isSelected ? "ring-2 ring-primary" : ""}`}
       onClick={() => onSelect && onSelect(bookmark)}
-      _hover={{
-        borderColor: isSelected ? selectedBorder : borderColor,
-        transform: "translateY(-2px)",
-        boxShadow: "0px 8px 20px rgba(0, 0, 0, 0.06)",
-      }}
-      transition="all 0.2s ease"
-      position="relative"
-      p="16px"
     >
-      {/* Author row */}
-      <Flex align="center" gap="10px" mb="10px">
-        <Avatar
-          size="sm"
-          name={bookmark.author_name || bookmark.author_username}
-          bg="brand.500"
-          color="white"
-          fontSize="xs"
-        />
-        <Box flex="1" minW="0">
-          <Text fontSize="sm" fontWeight="700" color={textColor} noOfLines={1}>
-            {bookmark.author_name || bookmark.author_username}
-          </Text>
-          <Text fontSize="xs" color={subColor}>
-            @{bookmark.author_username}
-          </Text>
-        </Box>
-        <Flex gap="1px" align="center" flexShrink={0}>
-          <Tooltip label={isFav ? "Unfavorite" : "Favorite"}>
-            <IconButton
-              icon={isFav ? <MdStar /> : <MdStarBorder />}
-              size="xs"
-              variant="ghost"
-              color={isFav ? "orange.400" : subColor}
-              aria-label="Favorite"
-              onClick={handleFavorite}
-            />
-          </Tooltip>
-          <Tooltip label="Open on X">
-            <IconButton
-              as={Link}
-              href={bookmark.url}
-              isExternal
-              icon={<MdOpenInNew />}
-              size="xs"
-              variant="ghost"
-              color={subColor}
-              aria-label="Open on X"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </Tooltip>
-          <Tooltip label="Delete">
-            <IconButton
-              icon={<MdDelete />}
-              size="xs"
-              variant="ghost"
-              color={subColor}
-              aria-label="Delete"
-              onClick={handleDelete}
-              _hover={{ bg: "red.50", color: "red.500" }}
-            />
-          </Tooltip>
-        </Flex>
-      </Flex>
+      <CardContent className="p-4">
+        {/* Author row */}
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <Avatar className="size-8">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+              {(bookmark.author_name || bookmark.author_username || "?")[0].toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate">{bookmark.author_name || bookmark.author_username}</p>
+            <p className="text-xs text-muted-foreground">@{bookmark.author_username}</p>
+          </div>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-7" onClick={handleFavorite}>
+                  {isFav ? <MdStar className="size-4 text-orange-400" /> : <MdStarBorder className="size-4 text-muted-foreground" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{isFav ? "Unfavorite" : "Favorite"}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a href={bookmark.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon" className="size-7"><MdOpenInNew className="size-4 text-muted-foreground" /></Button>
+                </a>
+              </TooltipTrigger>
+              <TooltipContent>Open on X</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-7 hover:text-destructive" onClick={handleDelete}>
+                  <MdDelete className="size-4 text-muted-foreground" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Delete</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
 
-      {/* Tweet text */}
-      <Text
-        fontSize="sm"
-        color={textColor}
-        noOfLines={expanded ? undefined : 5}
-        mb="12px"
-        lineHeight="1.6"
-        whiteSpace="pre-wrap"
-      >
-        {bookmark.text}
-      </Text>
+        <p className={`text-sm leading-relaxed whitespace-pre-wrap mb-3 ${expanded ? "" : "line-clamp-5"}`}>
+          {bookmark.text}
+        </p>
 
-      {/* Categories */}
-      {bookmark.categories && bookmark.categories.length > 0 && (
-        <HStack spacing="6px" mb="10px" flexWrap="wrap">
-          {bookmark.categories.map((cat) => (
-            <Badge
-              key={cat}
-              colorScheme={getCategoryColor(cat)}
-              fontSize="10px"
-              borderRadius="full"
-              px="8px"
-              py="2px"
-              fontWeight="500"
-              variant="subtle"
-            >
-              {cat}
-            </Badge>
-          ))}
-        </HStack>
-      )}
+        {bookmark.categories && bookmark.categories.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
+            {bookmark.categories.map((cat) => (
+              <span key={cat} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${BADGE_VARIANTS[getCategoryColor(cat)] || BADGE_VARIANTS.gray}`}>
+                {cat}
+              </span>
+            ))}
+          </div>
+        )}
 
-      {/* Bottom meta row - source, stats, date */}
-      <Flex
-        align="center"
-        justify="space-between"
-        pt="10px"
-        borderTop="1px solid"
-        borderColor={borderColor}
-      >
-        <HStack spacing="10px">
-          <Flex align="center" gap="3px">
-            <MdFavorite size={13} color="#e25555" />
-            <Text fontSize="xs" color={subColor} fontWeight="500">
-              {formatNumber(bookmark.likes)}
-            </Text>
-          </Flex>
-          <Flex align="center" gap="3px">
-            <MdRepeat size={13} color="#00ba7c" />
-            <Text fontSize="xs" color={subColor} fontWeight="500">
-              {formatNumber(bookmark.retweets)}
-            </Text>
-          </Flex>
-          <Flex align="center" gap="3px">
-            <MdVisibility size={13} color="#8899a6" />
-            <Text fontSize="xs" color={subColor} fontWeight="500">
-              {formatNumber(bookmark.views)}
-            </Text>
-          </Flex>
-        </HStack>
-
-        <HStack spacing="8px" align="center">
-          <HStack spacing="4px">
-            <Text fontSize="10px" fontWeight="600" color={subColor}>X</Text>
-            <Text fontSize="10px" color={subColor}>x.com</Text>
-          </HStack>
-          <Text fontSize="10px" color={subColor}>{formatDate(bookmark.created_at)}</Text>
-          <IconButton
-            icon={expanded ? <MdExpandLess /> : <MdExpandMore />}
-            size="xs"
-            variant="ghost"
-            color={subColor}
-            aria-label="Expand"
-            onClick={toggleExpand}
-          />
-        </HStack>
-      </Flex>
-
-      {/* Tags */}
-      {bookmark.tags && bookmark.tags.length > 0 && (
-        <HStack spacing="4px" mt="8px" flexWrap="wrap">
-          {bookmark.tags.slice(0, 4).map((tag) => (
-            <Tag
-              key={tag}
-              size="sm"
-              borderRadius="full"
-              variant="subtle"
-              colorScheme="gray"
-              cursor="pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTagClick && onTagClick(tag);
-              }}
-            >
-              <TagLabel fontSize="xs">#{tag}</TagLabel>
-            </Tag>
-          ))}
-        </HStack>
-      )}
-
-      {/* Expandable section */}
-      <Collapse in={expanded} animateOpacity>
-        <Box mt="12px" pt="12px" borderTop="1px solid" borderColor={borderColor}>
-          {/* Action Items */}
-          {hasActions && (
-            <Box mb="12px">
-              <Text fontSize="xs" fontWeight="700" color="green.500" mb="6px">
-                Actionable Steps
-              </Text>
-              <Box bg={actionBg} borderRadius="10px" p="10px">
-                <List spacing="4px">
-                  {bookmark.actionItems.map((item, i) => (
-                    <ListItem key={i} fontSize="xs" color={textColor} display="flex" alignItems="flex-start">
-                      <ListIcon as={MdCheckCircle} color="green.400" mt="2px" />
-                      <Text>{item}</Text>
-                    </ListItem>
-                  ))}
-                </List>
-              </Box>
-            </Box>
-          )}
-
-          {/* Notes */}
-          <Text fontSize="xs" fontWeight="600" color={subColor} mb="4px">
-            Notes
-          </Text>
-          <Textarea
-            size="sm"
-            fontSize="xs"
-            value={notes}
-            onChange={(e) => { e.stopPropagation(); setNotes(e.target.value); }}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Add personal notes..."
-            borderRadius="10px"
-            minH="60px"
-            mb="4px"
-            bg={codeBg}
-            border="none"
-          />
-          {notesChanged && (
-            <Button
-              size="xs"
-              leftIcon={<MdSave />}
-              colorScheme="brand"
-              variant="solid"
-              borderRadius="8px"
-              onClick={saveNotes}
-              mb="8px"
-            >
-              Save Notes
+        <div className="flex items-center justify-between pt-2.5 border-t">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground"><MdFavorite className="size-3.5 text-red-400" /> {formatNumber(bookmark.likes)}</span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground"><MdRepeat className="size-3.5 text-green-500" /> {formatNumber(bookmark.retweets)}</span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground"><MdVisibility className="size-3.5" /> {formatNumber(bookmark.views)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground font-medium">x.com</span>
+            <span className="text-[10px] text-muted-foreground">{formatDate(bookmark.created_at)}</span>
+            <Button variant="ghost" size="icon" className="size-6" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
+              {expanded ? <MdExpandLess className="size-4" /> : <MdExpandMore className="size-4" />}
             </Button>
-          )}
+          </div>
+        </div>
 
-          {/* Scraped content */}
-          {hasScraped && (
-            <Box mt="8px">
-              <Text fontSize="xs" fontWeight="600" color={subColor} mb="4px">
-                Scraped Content
-              </Text>
-              {bookmark.scraped_json.articles?.map((article, i) => (
-                <Box key={i} mb="8px" p="10px" bg={codeBg} borderRadius="10px">
-                  <Text fontSize="xs" fontWeight="600" color={textColor} mb="2px">
-                    {article.title || "Linked Article"}
-                  </Text>
-                  {article.description && (
-                    <Text fontSize="xs" color={subColor} mb="4px">
-                      {article.description}
-                    </Text>
-                  )}
-                  <Text fontSize="xs" color={subColor} noOfLines={6} whiteSpace="pre-wrap">
-                    {article.markdown || article.text || ""}
-                  </Text>
-                  {article.url && (
-                    <Link
-                      href={article.url}
-                      isExternal
-                      fontSize="xs"
-                      color="brand.400"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Open article
-                    </Link>
-                  )}
-                </Box>
-              ))}
-              {!bookmark.scraped_json.articles?.length && (
-                <Text fontSize="xs" color={subColor}>
-                  Scraped data available (no linked articles found)
-                </Text>
-              )}
-            </Box>
-          )}
-        </Box>
-      </Collapse>
+        {bookmark.tags && bookmark.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {bookmark.tags.slice(0, 4).map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-xs cursor-pointer hover:bg-muted" onClick={(e) => { e.stopPropagation(); onTagClick && onTagClick(tag); }}>
+                #{tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {expanded && (
+          <div className="mt-3 pt-3 border-t space-y-3">
+            {hasActions && (
+              <div>
+                <p className="text-xs font-semibold text-green-600 mb-1.5">Actionable Steps</p>
+                <div className="bg-green-50 rounded-lg p-2.5 space-y-1">
+                  {bookmark.actionItems.map((item, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs">
+                      <MdCheckCircle className="size-3.5 text-green-500 mt-0.5 shrink-0" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Notes</p>
+              <Textarea value={notes} onChange={(e) => { e.stopPropagation(); setNotes(e.target.value); }} onClick={(e) => e.stopPropagation()} placeholder="Add personal notes..." className="text-xs min-h-[60px]" />
+              {notesChanged && <Button size="sm" className="mt-1.5" onClick={saveNotes}><MdSave className="size-3.5 mr-1" /> Save</Button>}
+            </div>
+            {hasScraped && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Scraped Content</p>
+                {bookmark.scraped_json.articles?.map((article, i) => (
+                  <div key={i} className="bg-muted rounded-lg p-2.5 mb-2 text-xs">
+                    <p className="font-semibold mb-0.5">{article.title || "Linked Article"}</p>
+                    {article.description && <p className="text-muted-foreground mb-1">{article.description}</p>}
+                    <p className="text-muted-foreground line-clamp-6 whitespace-pre-wrap">{article.markdown || article.text || ""}</p>
+                    {article.url && <a href={article.url} target="_blank" rel="noopener" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>Open article</a>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
