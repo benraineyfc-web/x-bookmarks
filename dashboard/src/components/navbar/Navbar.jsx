@@ -18,7 +18,7 @@ export default function Navbar({ onOpen, title }) {
   const navigate = useNavigate();
   const [searchVal, setSearchVal] = useState("");
   const navbarBg = useColorModeValue(
-    "rgba(244,247,254,0.2)",
+    "rgba(249,250,251,0.7)",
     "rgba(11,20,55,0.5)"
   );
   const textColor = useColorModeValue("secondaryGray.900", "white");

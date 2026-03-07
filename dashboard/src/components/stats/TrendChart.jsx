@@ -4,10 +4,10 @@ import { Box, Text, Flex, useColorModeValue } from "@chakra-ui/react";
  * Simple SVG bar chart for bookmark trends.
  * data: [{ label: string, value: number }]
  */
-export default function TrendChart({ data, title, color = "#7551FF" }) {
+export default function TrendChart({ data, title, color = "#2B6CB0" }) {
   const textColor = useColorModeValue("secondaryGray.900", "white");
   const subColor = useColorModeValue("secondaryGray.600", "secondaryGray.600");
-  const barBg = useColorModeValue("#E9E3FF", "rgba(117, 81, 255, 0.15)");
+  const barBg = useColorModeValue("#EDF2F7", "rgba(117, 81, 255, 0.15)");
 
   if (!data || data.length === 0) return null;
 

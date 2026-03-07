@@ -208,7 +208,7 @@ export default function Collections() {
                     onClick={() => viewCollection(c)}
                     flex="1"
                   >
-                    <MdFolder size={20} color="#7551FF" />
+                    <MdFolder size={20} color="#2B6CB0" />
                     <Box>
                       <Text fontSize="sm" fontWeight="700" color={textColor}>
                         {c.name}
@@ -252,7 +252,7 @@ export default function Collections() {
         <ModalContent bg={useColorModeValue("white", "navy.800")} borderRadius="20px">
           <ModalHeader color={textColor}>
             <Flex align="center" gap="8px">
-              <MdFolder color="#7551FF" />
+              <MdFolder color="#2B6CB0" />
               {activeCollection?.name}
               <Badge colorScheme="brand" ml="8px">
                 {collectionBookmarks.length}

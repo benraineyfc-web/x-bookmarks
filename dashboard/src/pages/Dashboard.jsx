@@ -225,7 +225,7 @@ export default function Dashboard() {
           name="Total Bookmarks"
           value={stats.total.toLocaleString()}
           icon={MdBookmarks}
-          iconBg="linear-gradient(135deg, #868CFF 0%, #4318FF 100%)"
+          iconBg="linear-gradient(135deg, #63B3ED 0%, #2B6CB0 100%)"
         />
         <MiniStat
           name="Unique Authors"
@@ -261,7 +261,7 @@ export default function Dashboard() {
           name="Categorized"
           value={stats.categorized.toLocaleString()}
           icon={MdCategory}
-          iconBg="linear-gradient(135deg, #7928CA 0%, #FF0080 100%)"
+          iconBg="linear-gradient(135deg, #9F7AEA 0%, #6B46C1 100%)"
         />
       </SimpleGrid>
 
@@ -386,7 +386,7 @@ export default function Dashboard() {
       {/* Charts */}
       <SimpleGrid columns={{ base: 1, md: 2 }} gap="20px" mb="20px">
         <Card>
-          <TrendChart data={weeklyTrend} title="Bookmarks Added (Last 8 Weeks)" color="#7551FF" />
+          <TrendChart data={weeklyTrend} title="Bookmarks Added (Last 8 Weeks)" color="#2B6CB0" />
         </Card>
         <Card>
           <TrendChart data={engagementData} title="Avg Likes by Top Authors" color="#01B574" />
