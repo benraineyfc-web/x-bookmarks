@@ -129,6 +129,24 @@ export function normalize(rawData) {
   return results;
 }
 
+/** Extract external URLs from entities (filtering out x.com/twitter.com links) */
+function extractUrls(entities) {
+  if (!entities) return [];
+  const urlList = entities.urls || entities.url?.urls || [];
+  return urlList
+    .filter((u) => {
+      const expanded = u.expanded_url || u.url || "";
+      return expanded && !expanded.includes("twitter.com/") && !expanded.includes("x.com/");
+    })
+    .map((u) => ({
+      url: u.expanded_url || u.url || "",
+      display_url: u.display_url || "",
+      title: u.title || "",
+      description: u.description || "",
+      thumbnail: u.images?.[0]?.url || u.thumbnail || "",
+    }));
+}
+
 function detectFormat(sample) {
   if (sample.likeCount !== undefined && sample.retweetCount !== undefined)
     return "bird_cli";
@@ -146,6 +164,20 @@ function detectFormat(sample) {
 
 function normalizeBird(item) {
   const author = item.author || {};
+  // Extract quoted tweet if present
+  let quoteTweet = null;
+  if (item.quoted_tweet || item.quotedTweet) {
+    const qt = item.quoted_tweet || item.quotedTweet;
+    const qtAuthor = qt.author || {};
+    quoteTweet = {
+      text: qt.text || "",
+      author_username: qtAuthor.username || "",
+      author_name: qtAuthor.name || "",
+      media: qt.media || [],
+    };
+  }
+  // Extract URLs from entities
+  const urls = extractUrls(item.entities || item);
   return {
     id: String(item.id || ""),
     text: item.text || "",
@@ -159,6 +191,8 @@ function normalizeBird(item) {
     replies: item.replyCount || 0,
     bookmarks: item.bookmarkCount || 0,
     media: item.media || [],
+    quoteTweet,
+    urls,
   };
 }
 
@@ -196,7 +230,40 @@ function normalizeWebExporter(item) {
   const media = (entities.media || []).map((m) => ({
     type: m.type || "photo",
     url: m.media_url_https || m.url || "",
+    preview_image_url: m.preview_image_url || "",
   }));
+
+  // Extract URLs (link cards)
+  const legacyEntities = legacy.entities || {};
+  const urls = (legacyEntities.urls || [])
+    .filter((u) => u.expanded_url && !u.expanded_url.includes("twitter.com/") && !u.expanded_url.includes("x.com/"))
+    .map((u) => ({
+      url: u.expanded_url || u.url || "",
+      display_url: u.display_url || "",
+      title: u.title || "",
+      description: u.description || "",
+      thumbnail: u.images?.[0]?.url || "",
+    }));
+
+  // Extract quoted tweet
+  let quoteTweet = null;
+  const qtResult = item.quoted_status_result?.result || item.quotedRefResult?.result;
+  if (qtResult) {
+    const qtLegacy = qtResult.legacy || {};
+    const qtCore = qtResult.core || {};
+    const qtUser = (qtCore.user_results || {}).result?.legacy || {};
+    const qtEntities = qtLegacy.extended_entities || qtLegacy.entities || {};
+    const qtMedia = (qtEntities.media || []).map((m) => ({
+      type: m.type || "photo",
+      url: m.media_url_https || m.url || "",
+    }));
+    quoteTweet = {
+      text: qtLegacy.full_text || qtLegacy.text || "",
+      author_username: qtUser.screen_name || "",
+      author_name: qtUser.name || "",
+      media: qtMedia,
+    };
+  }
 
   return {
     id: tweetId,
@@ -217,12 +284,23 @@ function normalizeWebExporter(item) {
     replies: metrics.reply_count || 0,
     bookmarks: metrics.bookmark_count || 0,
     media,
+    quoteTweet,
+    urls,
   };
 }
 
 function normalizeApiV2(item) {
   const metrics = item.public_metrics || {};
   const author = item.author || {};
+  const urls = extractUrls(item.entities || {});
+  let quoteTweet = null;
+  if (item.referenced_tweets) {
+    const qt = item.referenced_tweets.find((r) => r.type === "quoted");
+    if (qt?.data) {
+      const qtAuthor = qt.data.author || {};
+      quoteTweet = { text: qt.data.text || "", author_username: qtAuthor.username || "", author_name: qtAuthor.name || "", media: qt.data.media || [] };
+    }
+  }
   return {
     id: String(item.id || ""),
     text: item.text || "",
@@ -236,6 +314,8 @@ function normalizeApiV2(item) {
     replies: metrics.reply_count || item.replyCount || 0,
     bookmarks: metrics.bookmark_count || item.bookmarkCount || 0,
     media: item.media || [],
+    quoteTweet,
+    urls,
   };
 }
 
@@ -273,6 +353,14 @@ function normalizeGeneric(item) {
     return 0;
   };
 
+  const urls = extractUrls(item.entities || {});
+  let quoteTweet = null;
+  if (item.quoted_tweet || item.quotedTweet) {
+    const qt = item.quoted_tweet || item.quotedTweet;
+    const qtAuthor = qt.author || qt.user || {};
+    quoteTweet = { text: qt.text || "", author_username: qtAuthor.username || qtAuthor.screen_name || "", author_name: qtAuthor.name || "", media: qt.media || [] };
+  }
+
   return {
     id: tweetId,
     text,
@@ -287,5 +375,7 @@ function normalizeGeneric(item) {
     replies: getMetric("replies", "reply_count", "replyCount"),
     bookmarks: getMetric("bookmarks", "bookmark_count", "bookmarkCount"),
     media: item.media || [],
+    quoteTweet,
+    urls,
   };
 }

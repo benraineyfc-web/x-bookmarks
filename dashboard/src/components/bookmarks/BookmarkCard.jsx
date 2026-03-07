@@ -3,15 +3,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   MdOpenInNew, MdFavorite, MdRepeat, MdVisibility,
-  MdExpandMore, MdExpandLess, MdSave, MdDelete,
-  MdStar, MdStarBorder, MdCheckCircle,
+  MdStar, MdStarBorder, MdDelete, MdPlayCircle,
+  MdImage, MdArticle, MdFormatQuote,
 } from "react-icons/md";
 import { db } from "../../lib/db";
 import { getCategoryColor } from "../../lib/categorize";
+import BookmarkDetailDialog from "./BookmarkDetailDialog";
 
 const BADGE_VARIANTS = {
   purple: "bg-purple-100 text-purple-700", blue: "bg-blue-100 text-blue-700",
@@ -30,161 +31,198 @@ function formatNumber(n) {
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
-  try {
-    return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  } catch { return dateStr; }
+  try { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return dateStr; }
 }
 
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick, onDelete, onFavoriteToggle }) {
-  const [expanded, setExpanded] = useState(false);
-  const [notes, setNotes] = useState(bookmark.notes || "");
-  const [savedNotes, setSavedNotes] = useState(bookmark.notes || "");
+  const [detailOpen, setDetailOpen] = useState(false);
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
 
+  const hasMedia = bookmark.media && bookmark.media.length > 0;
+  const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
+  const hasUrls = bookmark.urls && bookmark.urls.length > 0;
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
-  const notesChanged = notes !== savedNotes;
-  const hasActions = bookmark.actionItems && bookmark.actionItems.length > 0;
-
-  const saveNotes = async (e) => {
-    e.stopPropagation();
-    await db.bookmarks.update(bookmark.id, { notes });
-    setSavedNotes(notes);
-  };
-
-  const handleDelete = async (e) => {
-    e.stopPropagation();
-    await db.bookmarks.delete(bookmark.id);
-    if (onDelete) onDelete(bookmark.id);
-  };
+  const hasNotes = bookmark.notes && bookmark.notes.trim();
 
   const handleFavorite = async (e) => {
     e.stopPropagation();
     const newVal = !isFav;
     setIsFav(newVal);
     await db.bookmarks.update(bookmark.id, { favorite: newVal });
-    if (onFavoriteToggle) onFavoriteToggle(bookmark.id, newVal);
+    onFavoriteToggle?.(bookmark.id, newVal);
+  };
+
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    await db.bookmarks.delete(bookmark.id);
+    onDelete?.(bookmark.id);
+  };
+
+  const handleCardClick = (e) => {
+    // Don't open dialog if clicking interactive elements
+    if (e.target.closest("button") || e.target.closest("a") || e.target.closest('[role="checkbox"]')) return;
+    setDetailOpen(true);
   };
 
   return (
-    <Card
-      className={`cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${isSelected ? "ring-2 ring-primary" : ""}`}
-      onClick={() => onSelect && onSelect(bookmark)}
-    >
-      <CardContent className="p-4">
-        {/* Author row */}
-        <div className="flex items-center gap-2.5 mb-2.5">
-          <Avatar className="size-8">
-            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-              {(bookmark.author_name || bookmark.author_username || "?")[0].toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{bookmark.author_name || bookmark.author_username}</p>
-            <p className="text-xs text-muted-foreground">@{bookmark.author_username}</p>
-          </div>
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-7" onClick={handleFavorite}>
-                  {isFav ? <MdStar className="size-4 text-orange-400" /> : <MdStarBorder className="size-4 text-muted-foreground" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{isFav ? "Unfavorite" : "Favorite"}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a href={bookmark.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="icon" className="size-7"><MdOpenInNew className="size-4 text-muted-foreground" /></Button>
-                </a>
-              </TooltipTrigger>
-              <TooltipContent>Open on X</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-7 hover:text-destructive" onClick={handleDelete}>
-                  <MdDelete className="size-4 text-muted-foreground" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Delete</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-
-        <p className={`text-sm leading-relaxed whitespace-pre-wrap mb-3 ${expanded ? "" : "line-clamp-5"}`}>
-          {bookmark.text}
-        </p>
-
-        {bookmark.categories && bookmark.categories.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2.5">
-            {bookmark.categories.map((cat) => (
-              <span key={cat} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${BADGE_VARIANTS[getCategoryColor(cat)] || BADGE_VARIANTS.gray}`}>
-                {cat}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between pt-2.5 border-t">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 text-xs text-muted-foreground"><MdFavorite className="size-3.5 text-red-400" /> {formatNumber(bookmark.likes)}</span>
-            <span className="flex items-center gap-1 text-xs text-muted-foreground"><MdRepeat className="size-3.5 text-green-500" /> {formatNumber(bookmark.retweets)}</span>
-            <span className="flex items-center gap-1 text-xs text-muted-foreground"><MdVisibility className="size-3.5" /> {formatNumber(bookmark.views)}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground font-medium">x.com</span>
-            <span className="text-[10px] text-muted-foreground">{formatDate(bookmark.created_at)}</span>
-            <Button variant="ghost" size="icon" className="size-6" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
-              {expanded ? <MdExpandLess className="size-4" /> : <MdExpandMore className="size-4" />}
-            </Button>
-          </div>
-        </div>
-
-        {bookmark.tags && bookmark.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {bookmark.tags.slice(0, 4).map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-xs cursor-pointer hover:bg-muted" onClick={(e) => { e.stopPropagation(); onTagClick && onTagClick(tag); }}>
-                #{tag}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {expanded && (
-          <div className="mt-3 pt-3 border-t space-y-3">
-            {hasActions && (
-              <div>
-                <p className="text-xs font-semibold text-green-600 mb-1.5">Actionable Steps</p>
-                <div className="bg-green-50 rounded-lg p-2.5 space-y-1">
-                  {bookmark.actionItems.map((item, i) => (
-                    <div key={i} className="flex items-start gap-1.5 text-xs">
-                      <MdCheckCircle className="size-3.5 text-green-500 mt-0.5 shrink-0" />
-                      <span>{item}</span>
+    <>
+      <Card
+        className={`cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group ${isSelected ? "ring-2 ring-primary bg-accent/50" : ""}`}
+        onClick={handleCardClick}
+      >
+        {/* Media preview at top of card */}
+        {hasMedia && (
+          <div className={`overflow-hidden ${bookmark.media.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
+            {bookmark.media.slice(0, 4).map((m, i) => (
+              <div key={i} className={`relative overflow-hidden ${bookmark.media.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
+                {m.type === "video" || m.type === "animated_gif" ? (
+                  <div className="relative w-full h-full min-h-[100px] flex items-center justify-center">
+                    {(m.preview_image_url || m.url) && (
+                      <img src={m.preview_image_url || m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <MdPlayCircle className="size-8 text-white drop-shadow-lg" />
                     </div>
+                  </div>
+                ) : (
+                  <img src={m.url} alt={m.alt_text || ""} className="w-full h-full object-cover" loading="lazy" />
+                )}
+                {i === 3 && bookmark.media.length > 4 && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <span className="text-white font-bold text-lg">+{bookmark.media.length - 4}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <CardContent className="p-4">
+          {/* Author row with selection checkbox */}
+          <div className="flex items-center gap-2.5 mb-2">
+            {onSelect && (
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onSelect(bookmark)}
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100 transition-opacity shrink-0"
+              />
+            )}
+            <Avatar className="size-7">
+              <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
+                {(bookmark.author_name || bookmark.author_username || "?")[0].toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate leading-tight">{bookmark.author_name || bookmark.author_username}</p>
+              <p className="text-[11px] text-muted-foreground leading-tight">@{bookmark.author_username}</p>
+            </div>
+            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button variant="ghost" size="icon" className="size-6" onClick={handleFavorite}>
+                {isFav ? <MdStar className="size-3.5 text-orange-400" /> : <MdStarBorder className="size-3.5 text-muted-foreground" />}
+              </Button>
+              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                <Button variant="ghost" size="icon" className="size-6"><MdOpenInNew className="size-3.5 text-muted-foreground" /></Button>
+              </a>
+              <Button variant="ghost" size="icon" className="size-6 hover:text-destructive" onClick={handleDelete}>
+                <MdDelete className="size-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+            {/* Always show favorite icon when favorited */}
+            {isFav && (
+              <MdStar className="size-4 text-orange-400 shrink-0 group-hover:hidden" />
+            )}
+          </div>
+
+          {/* Tweet text - truncated */}
+          <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-4 mb-2">
+            {bookmark.text}
+          </p>
+
+          {/* Quote tweet preview */}
+          {hasQuote && (
+            <div className="border rounded-lg p-2.5 mb-2 bg-muted/50">
+              <div className="flex items-center gap-1.5 mb-1">
+                <MdFormatQuote className="size-3.5 text-muted-foreground" />
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  @{bookmark.quoteTweet.author_username}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground line-clamp-2">{bookmark.quoteTweet.text}</p>
+              {bookmark.quoteTweet.media?.length > 0 && (
+                <div className="flex gap-1 mt-1.5">
+                  {bookmark.quoteTweet.media.slice(0, 2).map((m, i) => (
+                    <img key={i} src={m.url} alt="" className="h-12 w-16 object-cover rounded" loading="lazy" />
                   ))}
                 </div>
-              </div>
-            )}
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Notes</p>
-              <Textarea value={notes} onChange={(e) => { e.stopPropagation(); setNotes(e.target.value); }} onClick={(e) => e.stopPropagation()} placeholder="Add personal notes..." className="text-xs min-h-[60px]" />
-              {notesChanged && <Button size="sm" className="mt-1.5" onClick={saveNotes}><MdSave className="size-3.5 mr-1" /> Save</Button>}
+              )}
             </div>
-            {hasScraped && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Scraped Content</p>
-                {bookmark.scraped_json.articles?.map((article, i) => (
-                  <div key={i} className="bg-muted rounded-lg p-2.5 mb-2 text-xs">
-                    <p className="font-semibold mb-0.5">{article.title || "Linked Article"}</p>
-                    {article.description && <p className="text-muted-foreground mb-1">{article.description}</p>}
-                    <p className="text-muted-foreground line-clamp-6 whitespace-pre-wrap">{article.markdown || article.text || ""}</p>
-                    {article.url && <a href={article.url} target="_blank" rel="noopener" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>Open article</a>}
-                  </div>
-                ))}
+          )}
+
+          {/* URL/article link card preview */}
+          {hasUrls && !hasQuote && (
+            <div className="border rounded-lg overflow-hidden mb-2 bg-muted/50">
+              {bookmark.urls[0].thumbnail && (
+                <img src={bookmark.urls[0].thumbnail} alt="" className="w-full h-24 object-cover" loading="lazy" />
+              )}
+              <div className="p-2">
+                {bookmark.urls[0].title && <p className="text-xs font-semibold line-clamp-1">{bookmark.urls[0].title}</p>}
+                {bookmark.urls[0].description && <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{bookmark.urls[0].description}</p>}
+                <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{bookmark.urls[0].display_url || bookmark.urls[0].url}</p>
               </div>
-            )}
+            </div>
+          )}
+
+          {/* Categories */}
+          {bookmark.categories && bookmark.categories.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {bookmark.categories.map((cat) => (
+                <span key={cat} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-medium rounded-full ${BADGE_VARIANTS[getCategoryColor(cat)] || BADGE_VARIANTS.gray}`}>
+                  {cat}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Footer: stats + metadata indicators */}
+          <div className="flex items-center justify-between pt-2 border-t">
+            <div className="flex items-center gap-2.5">
+              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground"><MdFavorite className="size-3 text-red-400" /> {formatNumber(bookmark.likes)}</span>
+              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground"><MdRepeat className="size-3 text-green-500" /> {formatNumber(bookmark.retweets)}</span>
+              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground"><MdVisibility className="size-3" /> {formatNumber(bookmark.views)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {/* Indicator icons for content types */}
+              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${bookmark.media.length} media`} />}
+              {hasScraped && <MdArticle className="size-3.5 text-blue-400" title="Has scraped content" />}
+              {hasNotes && <span className="size-2 rounded-full bg-orange-400" title="Has notes" />}
+              <span className="text-[10px] text-muted-foreground">{formatDate(bookmark.created_at)}</span>
+            </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {/* Tags */}
+          {bookmark.tags && bookmark.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {bookmark.tags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="secondary" className="text-[10px] h-5 cursor-pointer hover:bg-muted" onClick={(e) => { e.stopPropagation(); onTagClick?.(tag); }}>
+                  #{tag}
+                </Badge>
+              ))}
+              {bookmark.tags.length > 3 && <span className="text-[10px] text-muted-foreground self-center">+{bookmark.tags.length - 3}</span>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Detail dialog */}
+      <BookmarkDetailDialog
+        bookmark={bookmark}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onFavoriteToggle={onFavoriteToggle}
+        onDelete={onDelete}
+        onTagClick={onTagClick}
+      />
+    </>
   );
 }

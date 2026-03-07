@@ -1,16 +1,22 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   MdSearch, MdSelectAll, MdMoreVert, MdDelete, MdLabel, MdFolder,
-  MdStarBorder, MdStar, MdViewModule, MdViewList, MdFilterList, MdSort, MdClose,
+  MdStarBorder, MdStar, MdViewModule, MdViewList, MdFilterList, MdSort,
+  MdClose, MdAdd, MdContentCopy, MdCheckCircle,
 } from "react-icons/md";
 import BookmarkCard from "../components/bookmarks/BookmarkCard";
 import { db } from "../lib/db";
@@ -46,6 +52,13 @@ export default function Bookmarks() {
   const [allCategories, setAllCategories] = useState([]);
   const [viewMode, setViewMode] = useState("grid");
   const [showFilters, setShowFilters] = useState(false);
+
+  // Dialog states
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
+  const [tagInput, setTagInput] = useState("");
+  const [collectionDialogOpen, setCollectionDialogOpen] = useState(false);
+  const [collections, setCollections] = useState([]);
+  const [newCollectionName, setNewCollectionName] = useState("");
 
   useEffect(() => {
     setSearch(searchParams.get("search") || "");
@@ -112,9 +125,11 @@ export default function Bookmarks() {
 
   const deleteSelected = async () => {
     if (!selected.size) return;
+    const count = selected.size;
     await db.bookmarks.bulkDelete([...selected]);
     setBookmarks((prev) => prev.filter((bm) => !selected.has(bm.id)));
     setSelected(new Set());
+    toast.success(`Deleted ${count} bookmark${count !== 1 ? "s" : ""}`);
   };
 
   const handleDelete = (id) => {
@@ -128,7 +143,11 @@ export default function Bookmarks() {
 
   const exportSelected = () => navigate("/export", { state: { selectedIds: [...selected] } });
 
-  const addTagToSelected = async (tag) => {
+  // Tag dialog
+  const openTagDialog = () => { setTagInput(""); setTagDialogOpen(true); };
+  const addTagToSelected = async () => {
+    const tag = tagInput.trim();
+    if (!tag) return;
     const ids = [...selected];
     await db.transaction("rw", db.bookmarks, async () => {
       for (const id of ids) {
@@ -137,29 +156,48 @@ export default function Bookmarks() {
       }
     });
     setBookmarks(await db.bookmarks.toArray());
+    setTagDialogOpen(false);
+    toast.success(`Added tag "${tag}" to ${ids.length} bookmark${ids.length !== 1 ? "s" : ""}`);
   };
 
-  const addToCollection = async () => {
-    const collections = await db.collections.toArray();
-    if (collections.length === 0) {
-      const name = prompt("No collections yet. Enter a name to create one:");
-      if (!name?.trim()) return;
-      const id = await db.collections.add({ name: name.trim(), createdAt: new Date().toISOString() });
-      for (const bmId of selected) await db.collectionItems.add({ collectionId: id, bookmarkId: bmId });
-    } else {
-      const list = collections.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-      const choice = prompt(`Choose a collection (enter number):\n${list}\n\nOr type a new name:`);
-      if (!choice?.trim()) return;
-      const num = parseInt(choice);
-      let collId;
-      if (num >= 1 && num <= collections.length) collId = collections[num - 1].id;
-      else collId = await db.collections.add({ name: choice.trim(), createdAt: new Date().toISOString() });
-      for (const bmId of selected) {
-        const exists = await db.collectionItems.where("collectionId").equals(collId).filter((i) => i.bookmarkId === bmId).first();
-        if (!exists) await db.collectionItems.add({ collectionId: collId, bookmarkId: bmId });
-      }
+  // Collection dialog
+  const openCollectionDialog = async () => {
+    const colls = await db.collections.toArray();
+    setCollections(colls);
+    setNewCollectionName("");
+    setCollectionDialogOpen(true);
+  };
+
+  const addToCollection = async (collId) => {
+    for (const bmId of selected) {
+      const exists = await db.collectionItems.where("collectionId").equals(collId).filter((i) => i.bookmarkId === bmId).first();
+      if (!exists) await db.collectionItems.add({ collectionId: collId, bookmarkId: bmId });
     }
+    const coll = collections.find((c) => c.id === collId);
+    toast.success(`Added ${selected.size} bookmark${selected.size !== 1 ? "s" : ""} to "${coll?.name || "collection"}"`);
     setSelected(new Set());
+    setCollectionDialogOpen(false);
+  };
+
+  const createAndAddToCollection = async () => {
+    const name = newCollectionName.trim();
+    if (!name) return;
+    const collId = await db.collections.add({ name, createdAt: new Date().toISOString() });
+    for (const bmId of selected) {
+      await db.collectionItems.add({ collectionId: collId, bookmarkId: bmId });
+    }
+    toast.success(`Created "${name}" with ${selected.size} bookmark${selected.size !== 1 ? "s" : ""}`);
+    setSelected(new Set());
+    setCollectionDialogOpen(false);
+  };
+
+  const favoriteSelected = async () => {
+    const ids = [...selected];
+    await db.transaction("rw", db.bookmarks, async () => {
+      for (const id of ids) await db.bookmarks.update(id, { favorite: true });
+    });
+    setBookmarks((prev) => prev.map((bm) => selected.has(bm.id) ? { ...bm, favorite: true } : bm));
+    toast.success(`Favorited ${ids.length} bookmark${ids.length !== 1 ? "s" : ""}`);
   };
 
   const hasActiveFilters = filterTag || filterAuthor || filterCategory || filterFavorites || search || dateFrom || dateTo;
@@ -173,6 +211,7 @@ export default function Bookmarks() {
 
   return (
     <div>
+      {/* Header bar */}
       <div className="flex items-center gap-3 mb-5">
         <SidebarTrigger />
         <div className="flex items-center gap-3 flex-1 flex-wrap">
@@ -212,6 +251,7 @@ export default function Bookmarks() {
         </div>
       </div>
 
+      {/* Filter panel */}
       {showFilters && (
         <Card className="mb-4">
           <CardContent className="p-3">
@@ -240,11 +280,19 @@ export default function Bookmarks() {
               </Button>
               <Input type="date" className="h-8 text-sm max-w-[145px]" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} title="From date" />
               <Input type="date" className="h-8 text-sm max-w-[145px]" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} title="To date" />
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => {
+                  setSearch(""); setFilterTag(""); setFilterAuthor(""); setFilterCategory(""); setFilterFavorites(false); setDateFrom(""); setDateTo(""); setPage(1);
+                }}>
+                  Clear All
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Active filter pills */}
       {hasActiveFilters && (
         <div className="flex gap-1.5 flex-wrap mb-4">
           {search && <Badge variant="secondary" className="gap-1">"{search}" <MdClose className="size-3 cursor-pointer" onClick={() => setSearch("")} /></Badge>}
@@ -256,26 +304,35 @@ export default function Bookmarks() {
         </div>
       )}
 
+      {/* Selection toolbar */}
       {selected.size > 0 && (
-        <Card className="mb-4 bg-accent">
+        <Card className="mb-4 border-primary/30 bg-primary/5">
           <CardContent className="p-2.5 px-4 flex items-center justify-between">
-            <span className="text-sm font-semibold">{selected.size} selected</span>
+            <div className="flex items-center gap-3">
+              <Checkbox checked={selected.size === filtered.length} onCheckedChange={(checked) => checked ? selectAll() : clearSelection()} />
+              <span className="text-sm font-semibold">{selected.size} selected</span>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={clearSelection}>Clear</Button>
+            </div>
             <div className="flex items-center gap-1.5">
-              <Button variant="ghost" size="sm" onClick={clearSelection}>Clear</Button>
-              <Button size="sm" onClick={exportSelected}>Export to Claude</Button>
+              <Button size="sm" variant="outline" onClick={openTagDialog}>
+                <MdLabel className="mr-1 size-3.5" /> Tag
+              </Button>
+              <Button size="sm" variant="outline" onClick={openCollectionDialog}>
+                <MdFolder className="mr-1 size-3.5" /> Collect
+              </Button>
+              <Button size="sm" variant="outline" onClick={favoriteSelected}>
+                <MdStar className="mr-1 size-3.5" /> Favorite
+              </Button>
+              <Button size="sm" onClick={exportSelected}>
+                <MdContentCopy className="mr-1 size-3.5" /> Export
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="size-7"><MdMoreVert /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => { const tag = prompt("Enter tag name:"); if (tag) addTagToSelected(tag.trim()); }}>
-                    <MdLabel className="mr-2" /> Add Tag
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={addToCollection}>
-                    <MdFolder className="mr-2" /> Add to Collection
-                  </DropdownMenuItem>
                   <DropdownMenuItem className="text-destructive" onClick={deleteSelected}>
-                    <MdDelete className="mr-2" /> Delete Selected
+                    <MdDelete className="mr-2" /> Delete {selected.size} bookmark{selected.size !== 1 ? "s" : ""}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -284,6 +341,7 @@ export default function Bookmarks() {
         </Card>
       )}
 
+      {/* Bookmark grid */}
       {filtered.length === 0 ? (
         <Card><CardContent className="p-4 text-center text-muted-foreground py-10">
           {bookmarks.length === 0 ? "No bookmarks yet. Import some first!" : "No bookmarks match your filters."}
@@ -312,6 +370,76 @@ export default function Bookmarks() {
           )}
         </>
       )}
+
+      {/* Add Tag Dialog */}
+      <Dialog open={tagDialogOpen} onOpenChange={setTagDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Tag to {selected.size} Bookmark{selected.size !== 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Enter tag name..."
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTagToSelected()}
+              autoFocus
+            />
+            {allTags.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">Existing tags:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {allTags.slice(0, 15).map((t) => (
+                    <Badge key={t} variant="secondary" className="cursor-pointer hover:bg-primary hover:text-primary-foreground" onClick={() => { setTagInput(t); }}>
+                      {t}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTagDialogOpen(false)}>Cancel</Button>
+            <Button onClick={addTagToSelected} disabled={!tagInput.trim()}>Add Tag</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add to Collection Dialog */}
+      <Dialog open={collectionDialogOpen} onOpenChange={setCollectionDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add to Collection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {collections.length > 0 && (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {collections.map((c) => (
+                  <Button key={c.id} variant="ghost" className="w-full justify-start h-auto py-2.5" onClick={() => addToCollection(c.id)}>
+                    <MdFolder className="mr-2 size-4 text-primary" />
+                    <span className="font-medium">{c.name}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
+            <div className="border-t pt-3">
+              <p className="text-xs text-muted-foreground mb-2">Or create a new collection:</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Collection name..."
+                  value={newCollectionName}
+                  onChange={(e) => setNewCollectionName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && createAndAddToCollection()}
+                  className="text-sm"
+                />
+                <Button size="sm" onClick={createAndAddToCollection} disabled={!newCollectionName.trim()}>
+                  <MdAdd className="mr-1" /> Create
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
