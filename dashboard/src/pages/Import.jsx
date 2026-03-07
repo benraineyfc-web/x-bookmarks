@@ -27,13 +27,32 @@ export default function Import() {
 
   const removeTag = (tag) => setTags(tags.filter((t) => t !== tag));
 
+  const [diagnostics, setDiagnostics] = useState(null);
+
   const doImport = async (rawJson) => {
     setError("");
     setResult(null);
+    setDiagnostics(null);
     setLoading(true);
     try {
       const parsed = JSON.parse(rawJson);
       const normalized = normalize(parsed);
+
+      // Build diagnostics from first item with media
+      const rawArray = Array.isArray(parsed) ? parsed : (parsed.data || parsed.bookmarks || parsed.tweets || parsed.results || [parsed]);
+      const sampleRaw = rawArray[0];
+      const sampleNorm = normalized[0];
+      const withMedia = normalized.filter(b => b.media && b.media.length > 0 && b.media.some(m => m.url && m.url.startsWith('http')));
+      const withAuthor = normalized.filter(b => b.author_username);
+      setDiagnostics({
+        rawKeys: sampleRaw ? Object.keys(sampleRaw) : [],
+        rawSample: sampleRaw ? JSON.stringify(sampleRaw, null, 2).slice(0, 2000) : "none",
+        normSample: sampleNorm ? JSON.stringify({ id: sampleNorm.id, author_username: sampleNorm.author_username, author_name: sampleNorm.author_name, media: sampleNorm.media, urls: sampleNorm.urls, quoteTweet: sampleNorm.quoteTweet }, null, 2) : "none",
+        totalNormalized: normalized.length,
+        withValidMedia: withMedia.length,
+        withAuthor: withAuthor.length,
+      });
+
       if (normalized.length === 0) { setError("No valid bookmarks found in the data. Check the format."); setLoading(false); return; }
       const { added, skipped, updated } = await importBookmarks(normalized, tags, { updateExisting });
       setResult({ added, skipped, updated, total: normalized.length });
@@ -66,6 +85,34 @@ export default function Import() {
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-4 mb-5">
           <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {diagnostics && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 mb-5">
+          <p className="font-semibold text-blue-800 mb-2">Import Diagnostics</p>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="text-center p-2 bg-white rounded">
+              <p className="text-lg font-bold">{diagnostics.totalNormalized}</p>
+              <p className="text-[10px] text-muted-foreground">Total Parsed</p>
+            </div>
+            <div className="text-center p-2 bg-white rounded">
+              <p className="text-lg font-bold">{diagnostics.withValidMedia}</p>
+              <p className="text-[10px] text-muted-foreground">With Media</p>
+            </div>
+            <div className="text-center p-2 bg-white rounded">
+              <p className="text-lg font-bold">{diagnostics.withAuthor}</p>
+              <p className="text-[10px] text-muted-foreground">With Author</p>
+            </div>
+          </div>
+          <details className="mb-2">
+            <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Raw JSON keys: [{diagnostics.rawKeys.join(", ")}]</summary>
+            <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.rawSample}</pre>
+          </details>
+          <details>
+            <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Normalized sample (first bookmark)</summary>
+            <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.normSample}</pre>
+          </details>
         </div>
       )}
 
