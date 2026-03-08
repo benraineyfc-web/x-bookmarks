@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,10 +33,16 @@ function formatDate(dateStr) {
   try { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return dateStr; }
 }
 
-/** Image component that hides itself on error */
+/** Image component that shows a placeholder on error instead of hiding */
 function SafeImg({ src, alt, className, loading, onClick }) {
   const [failed, setFailed] = useState(false);
-  if (failed || !src) return null;
+  if (!src || failed) {
+    return (
+      <div className={`flex items-center justify-center bg-muted text-muted-foreground ${className || ""}`} style={{ minHeight: 60 }}>
+        <MdImage className="size-6 opacity-40" />
+      </div>
+    );
+  }
   return (
     <img
       src={src}
@@ -69,22 +75,15 @@ function getAuthorInfo(bookmark) {
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick, onDelete, onFavoriteToggle }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
-  const [hiddenMedia, setHiddenMedia] = useState(new Set());
-
   // Filter media to only items with valid URLs
-  const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http'));
-  const visibleMedia = validMedia.filter((_, i) => !hiddenMedia.has(i));
-  const hasMedia = visibleMedia.length > 0;
+  const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http') && !m.url.includes('t.co/'));
+  const hasMedia = validMedia.length > 0;
   const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
   const hasUrls = bookmark.urls && bookmark.urls.length > 0;
   const hasScraped = bookmark.scraped_json && Object.keys(bookmark.scraped_json).length > 0;
   const hasNotes = bookmark.notes && bookmark.notes.trim();
 
   const { username: authorUsername, name: authorName } = getAuthorInfo(bookmark);
-
-  const handleMediaError = useCallback((index) => {
-    setHiddenMedia(prev => new Set(prev).add(index));
-  }, []);
 
   const handleFavorite = async (e) => {
     e.stopPropagation();
@@ -113,9 +112,9 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
       >
         {/* Media preview at top of card */}
         {hasMedia && (
-          <div className={`overflow-hidden ${visibleMedia.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
-            {visibleMedia.slice(0, 4).map((m, i) => (
-              <div key={i} className={`relative overflow-hidden ${visibleMedia.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
+          <div className={`overflow-hidden ${validMedia.length === 1 ? "" : "grid grid-cols-2 gap-0.5"}`}>
+            {validMedia.slice(0, 4).map((m, i) => (
+              <div key={i} className={`relative overflow-hidden ${validMedia.length === 1 ? "max-h-[200px]" : "max-h-[120px]"} bg-muted`}>
                 {(m.type === "video" || m.type === "animated_gif") ? (
                   <div className="relative w-full h-full min-h-[100px] flex items-center justify-center bg-muted">
                     <SafeImg src={m.preview_image_url || m.url} className="w-full h-full object-cover" loading="lazy" />
@@ -125,17 +124,16 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
                     {m.type === "video" && <span className="absolute bottom-1 right-1 text-[9px] text-white bg-black/60 px-1.5 py-0.5 rounded">Video</span>}
                   </div>
                 ) : (
-                  <img
+                  <SafeImg
                     src={m.url}
                     alt={m.alt_text || ""}
                     className="w-full h-full object-cover"
                     loading="lazy"
-                    onError={() => handleMediaError(validMedia.indexOf(m))}
                   />
                 )}
-                {i === 3 && visibleMedia.length > 4 && (
+                {i === 3 && validMedia.length > 4 && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">+{visibleMedia.length - 4}</span>
+                    <span className="text-white font-bold text-lg">+{validMedia.length - 4}</span>
                   </div>
                 )}
               </div>
@@ -237,7 +235,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground"><MdVisibility className="size-3" /> {formatNumber(bookmark.views)}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${visibleMedia.length} media`} />}
+              {hasMedia && <MdImage className="size-3.5 text-muted-foreground" title={`${validMedia.length} media`} />}
               {hasScraped && <MdArticle className="size-3.5 text-blue-400" title="Has scraped content" />}
               {hasNotes && <span className="size-2 rounded-full bg-orange-400" title="Has notes" />}
               <span className="text-[10px] text-muted-foreground">{formatDate(bookmark.created_at)}</span>

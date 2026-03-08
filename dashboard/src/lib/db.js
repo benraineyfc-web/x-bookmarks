@@ -214,10 +214,12 @@ function extractMedia(entities) {
   const mediaList = entities.media || [];
   return mediaList.map((m) => {
     const type = m.type || "photo";
+    // Prefer media_url_https over url (which is often a t.co shortlink)
+    const mediaUrl = m.media_url_https || m.media_url || m.original || "";
     const result = {
       type,
-      url: m.media_url_https || m.url || "",
-      preview_image_url: m.media_url_https || m.preview_image_url || "",
+      url: mediaUrl || m.url || "",
+      preview_image_url: mediaUrl || m.preview_image_url || m.thumbnail || "",
       alt_text: m.ext_alt_text || m.alt_text || "",
     };
 
@@ -234,7 +236,7 @@ function extractMedia(entities) {
         result.video_url = variants[0].url;
       }
       // preview_image_url is the poster/thumbnail for videos
-      result.preview_image_url = m.media_url_https || "";
+      result.preview_image_url = mediaUrl || "";
     }
 
     return result;

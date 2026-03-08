@@ -100,38 +100,40 @@ export default function Import() {
       )}
 
       {diagnostics && (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 mb-5">
-          <p className="font-semibold text-blue-800 mb-2">Import Diagnostics</p>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            <div className="text-center p-2 bg-white rounded">
-              <p className="text-lg font-bold">{diagnostics.totalNormalized}</p>
-              <p className="text-[10px] text-muted-foreground">Total Parsed</p>
+        <details className="rounded-lg bg-blue-50 border border-blue-200 p-4 mb-5">
+          <summary className="font-semibold text-blue-800 cursor-pointer">Import Diagnostics — {diagnostics.totalNormalized} parsed, {diagnostics.withValidMedia} with media</summary>
+          <div className="mt-3">
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="text-center p-2 bg-white rounded">
+                <p className="text-lg font-bold">{diagnostics.totalNormalized}</p>
+                <p className="text-[10px] text-muted-foreground">Total Parsed</p>
+              </div>
+              <div className="text-center p-2 bg-white rounded">
+                <p className="text-lg font-bold">{diagnostics.withValidMedia}</p>
+                <p className="text-[10px] text-muted-foreground">With Media</p>
+              </div>
+              <div className="text-center p-2 bg-white rounded">
+                <p className="text-lg font-bold">{diagnostics.withAuthor}</p>
+                <p className="text-[10px] text-muted-foreground">With Author</p>
+              </div>
             </div>
-            <div className="text-center p-2 bg-white rounded">
-              <p className="text-lg font-bold">{diagnostics.withValidMedia}</p>
-              <p className="text-[10px] text-muted-foreground">With Media</p>
-            </div>
-            <div className="text-center p-2 bg-white rounded">
-              <p className="text-lg font-bold">{diagnostics.withAuthor}</p>
-              <p className="text-[10px] text-muted-foreground">With Author</p>
-            </div>
+            <details className="mb-2">
+              <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Raw JSON keys: [{diagnostics.rawKeys.join(", ")}]</summary>
+              <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.rawSample}</pre>
+            </details>
+            <details>
+              <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Normalized sample (first bookmark)</summary>
+              <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.normSample}</pre>
+            </details>
+            <details className="mt-2">
+              <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Sample with media (raw + normalized)</summary>
+              <p className="text-[10px] font-semibold mt-1 mb-0.5">Raw media object:</p>
+              <pre className="text-[10px] font-mono bg-white rounded p-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.rawMediaSample}</pre>
+              <p className="text-[10px] font-semibold mt-1 mb-0.5">Normalized media:</p>
+              <pre className="text-[10px] font-mono bg-white rounded p-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.mediaSampleNorm}</pre>
+            </details>
           </div>
-          <details className="mb-2">
-            <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Raw JSON keys: [{diagnostics.rawKeys.join(", ")}]</summary>
-            <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.rawSample}</pre>
-          </details>
-          <details>
-            <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Normalized sample (first bookmark)</summary>
-            <pre className="text-[10px] font-mono bg-white rounded p-2 mt-1 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.normSample}</pre>
-          </details>
-          <details className="mt-2">
-            <summary className="text-xs font-semibold text-blue-700 cursor-pointer">Sample with media (raw + normalized)</summary>
-            <p className="text-[10px] font-semibold mt-1 mb-0.5">Raw media object:</p>
-            <pre className="text-[10px] font-mono bg-white rounded p-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.rawMediaSample}</pre>
-            <p className="text-[10px] font-semibold mt-1 mb-0.5">Normalized media:</p>
-            <pre className="text-[10px] font-mono bg-white rounded p-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-all">{diagnostics.mediaSampleNorm}</pre>
-          </details>
-        </div>
+        </details>
       )}
 
       <Card className="mb-5">
