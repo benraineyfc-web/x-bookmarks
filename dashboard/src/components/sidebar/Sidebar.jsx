@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   Sidebar,
   SidebarContent,
@@ -37,43 +37,39 @@ const CATEGORY_DOT_COLORS = {
   gray: "bg-gray-500",
 };
 
+const DEFAULT_STATS = {
+  total: 0, unsorted: 0, favorites: 0,
+  categories: [], collections: [], tags: [],
+};
+
 export default function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [stats, setStats] = useState({
-    total: 0, unsorted: 0, favorites: 0,
-    categories: [], collections: [], tags: [],
-  });
 
-  useEffect(() => {
-    async function load() {
-      const all = await db.bookmarks.toArray();
-      const collections = await db.collections.toArray();
-      let unsorted = 0, favCount = 0;
-      const catCounts = {}, tagCounts = {};
+  const stats = useLiveQuery(async () => {
+    const all = await db.bookmarks.toArray();
+    const collections = await db.collections.toArray();
+    let unsorted = 0, favCount = 0;
+    const catCounts = {}, tagCounts = {};
 
-      for (const bm of all) {
-        if (!bm.categories || bm.categories.length === 0) unsorted++;
-        if (bm.favorite) favCount++;
-        if (bm.categories) for (const c of bm.categories) catCounts[c] = (catCounts[c] || 0) + 1;
-        if (bm.tags) for (const t of bm.tags) tagCounts[t] = (tagCounts[t] || 0) + 1;
-      }
-
-      const collectionItems = await db.collectionItems.toArray();
-      const collCounts = {};
-      for (const item of collectionItems) collCounts[item.collectionId] = (collCounts[item.collectionId] || 0) + 1;
-
-      setStats({
-        total: all.length, unsorted, favorites: favCount,
-        categories: Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
-        collections: collections.map((c) => ({ ...c, count: collCounts[c.id] || 0 })),
-        tags: Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count]) => ({ name, count })),
-      });
+    for (const bm of all) {
+      if (!bm.categories || bm.categories.length === 0) unsorted++;
+      if (bm.favorite) favCount++;
+      if (bm.categories) for (const c of bm.categories) catCounts[c] = (catCounts[c] || 0) + 1;
+      if (bm.tags) for (const t of bm.tags) tagCounts[t] = (tagCounts[t] || 0) + 1;
     }
-    load();
-    const interval = setInterval(load, 3000);
-    return () => clearInterval(interval);
-  }, []);
+
+    const collectionItems = await db.collectionItems.toArray();
+    const collCounts = {};
+    for (const item of collectionItems) collCounts[item.collectionId] = (collCounts[item.collectionId] || 0) + 1;
+
+    return {
+      total: all.length, unsorted, favorites: favCount,
+      categories: Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+      collections: collections.map((c) => ({ ...c, count: collCounts[c.id] || 0 })),
+      tags: Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count]) => ({ name, count })),
+    };
+  }) ?? DEFAULT_STATS;
 
   const isActive = (path) => {
     if (path.includes("?")) return location.pathname + location.search === path;

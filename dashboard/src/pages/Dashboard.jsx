@@ -118,8 +118,8 @@ export default function Dashboard() {
     setScraping(false);
   };
 
-  const handleDelete = (id) => { setRecent((p) => p.filter((b) => b.id !== id)); setFavorites((p) => p.filter((b) => b.id !== id)); loadStats(); };
-  const handleFavoriteToggle = (id, val) => { setRecent((p) => p.map((b) => (b.id === id ? { ...b, favorite: val } : b))); loadStats(); };
+  const handleDelete = (id) => { setRecent((p) => p.filter((b) => b.id !== id)); setFavorites((p) => p.filter((b) => b.id !== id)); setTimeout(loadStats, 100); };
+  const handleFavoriteToggle = (id, val) => { setRecent((p) => p.map((b) => (b.id === id ? { ...b, favorite: val } : b))); setFavorites((p) => p.map((b) => (b.id === id ? { ...b, favorite: val } : b))); setTimeout(loadStats, 100); };
   const fmtLikes = stats.totalLikes >= 1e6 ? (stats.totalLikes / 1e6).toFixed(1) + "M" : stats.totalLikes >= 1e3 ? (stats.totalLikes / 1e3).toFixed(1) + "K" : stats.totalLikes.toLocaleString();
 
   return (

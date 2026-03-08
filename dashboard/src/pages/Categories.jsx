@@ -54,7 +54,7 @@ export default function Categories() {
     setRecategorizing(false);
   };
 
-  const handleDelete = (id) => setBookmarks((prev) => prev.filter((bm) => bm.id !== id));
+  const handleDelete = (id) => { setBookmarks((prev) => prev.filter((bm) => bm.id !== id)); setTimeout(loadData, 100); };
   const handleFavoriteToggle = (id, val) => setBookmarks((prev) => prev.map((bm) => (bm.id === id ? { ...bm, favorite: val } : bm)));
 
   const filteredBookmarks = activeCategory

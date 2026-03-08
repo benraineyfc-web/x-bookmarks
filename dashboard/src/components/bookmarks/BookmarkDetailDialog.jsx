@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -15,26 +15,7 @@ import {
 } from "react-icons/md";
 import { db } from "../../lib/db";
 import { getCategoryColor } from "../../lib/categorize";
-
-const BADGE_VARIANTS = {
-  purple: "bg-purple-100 text-purple-700", blue: "bg-blue-100 text-blue-700",
-  pink: "bg-pink-100 text-pink-700", cyan: "bg-cyan-100 text-cyan-700",
-  teal: "bg-teal-100 text-teal-700", orange: "bg-orange-100 text-orange-700",
-  red: "bg-red-100 text-red-700", green: "bg-green-100 text-green-700",
-  yellow: "bg-yellow-100 text-yellow-700", gray: "bg-gray-100 text-gray-700",
-};
-
-function formatNumber(n) {
-  if (!n) return "0";
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
-  return String(n);
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  try { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return dateStr; }
-}
+import { BADGE_VARIANTS, formatNumber, formatDate, SafeImg, getAuthorInfo } from "../../lib/utils-bookmarks";
 
 function formatTime(dateStr) {
   if (!dateStr) return "";
@@ -83,35 +64,6 @@ function RichText({ text }) {
   );
 }
 
-/** Image that hides itself on load error */
-function SafeImg({ src, alt, className, loading, onClick }) {
-  const [failed, setFailed] = useState(false);
-  if (failed || !src) return null;
-  return (
-    <img
-      src={src}
-      alt={alt || ""}
-      className={className}
-      loading={loading}
-      onClick={onClick}
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-/** Extract author info with URL fallback */
-function getAuthorInfo(bookmark) {
-  let username = bookmark.author_username || "";
-  let name = bookmark.author_name || "";
-  if (!username && bookmark.url) {
-    const match = bookmark.url.match(/(?:x\.com|twitter\.com)\/([^/]+)\/status/);
-    if (match) username = match[1];
-  }
-  if (!name) name = username;
-  if (!name) name = "Unknown";
-  return { username, name };
-}
-
 export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onFavoriteToggle, onDelete, onTagClick }) {
   const [notes, setNotes] = useState(bookmark?.notes || "");
   const [savedNotes, setSavedNotes] = useState(bookmark?.notes || "");
@@ -119,6 +71,18 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
   const [lightboxImg, setLightboxImg] = useState(null);
   const [copied, setCopied] = useState(false);
   const [failedMedia, setFailedMedia] = useState(new Set());
+
+  // Sync local state when bookmark changes (prevents stale data on re-open)
+  useEffect(() => {
+    if (bookmark) {
+      setNotes(bookmark.notes || "");
+      setSavedNotes(bookmark.notes || "");
+      setIsFav(bookmark.favorite || false);
+      setFailedMedia(new Set());
+      setLightboxImg(null);
+      setCopied(false);
+    }
+  }, [bookmark?.id]);
 
   if (!bookmark) return null;
 
@@ -151,6 +115,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
   };
 
   const handleDelete = async () => {
+    if (!window.confirm("Delete this bookmark? This cannot be undone.")) return;
     await db.bookmarks.delete(bookmark.id);
     onDelete?.(bookmark.id);
     onOpenChange(false);
@@ -181,6 +146,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogTitle className="sr-only">Bookmark by {authorName}</DialogTitle>
           {/* Media gallery at top */}
           {hasMedia && (
             <div className={`grid gap-1 ${visibleMedia.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
@@ -241,11 +207,11 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
                 {authorUsername && <p className="text-sm text-muted-foreground">@{authorUsername}</p>}
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="size-8" onClick={handleFavorite}>
+                <Button variant="ghost" size="icon" className="size-8" onClick={handleFavorite} aria-label={isFav ? "Remove from favorites" : "Add to favorites"}>
                   {isFav ? <MdStar className="size-5 text-orange-400" /> : <MdStarBorder className="size-5 text-muted-foreground" />}
                 </Button>
-                <a href={bookmark.url} target="_blank" rel="noopener noreferrer">
-                  <Button variant="ghost" size="icon" className="size-8">
+                <a href={bookmark.url} target="_blank" rel="noopener noreferrer" aria-label="Open on X">
+                  <Button variant="ghost" size="icon" className="size-8" aria-label="Open on X">
                     <MdOpenInNew className="size-5 text-muted-foreground" />
                   </Button>
                 </a>
@@ -303,7 +269,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
                   <span
                     key={cat}
                     className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full cursor-pointer hover:opacity-80 ${BADGE_VARIANTS[getCategoryColor(cat)] || BADGE_VARIANTS.gray}`}
-                    onClick={() => { onTagClick?.(null); onOpenChange(false); }}
+                    onClick={() => { onTagClick?.(cat); onOpenChange(false); }}
                   >
                     {cat}
                   </span>
@@ -437,8 +403,8 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
 
       {/* Image lightbox */}
       {lightboxImg && (
-        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center cursor-pointer" onClick={() => setLightboxImg(null)}>
-          <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white hover:bg-white/20 size-10" onClick={() => setLightboxImg(null)}>
+        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center cursor-pointer" role="dialog" aria-label="Image preview" onClick={() => setLightboxImg(null)} onKeyDown={(e) => e.key === "Escape" && setLightboxImg(null)}>
+          <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white hover:bg-white/20 size-10" onClick={() => setLightboxImg(null)} aria-label="Close image preview">
             <MdClose className="size-6" />
           </Button>
           <img src={lightboxImg} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />

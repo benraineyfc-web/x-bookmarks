@@ -189,7 +189,9 @@ export default function Import() {
             <p className="text-sm text-muted-foreground mb-3">
               Paste your exported JSON from Tampermonkey, bird CLI, or any X export tool. We auto-detect the format.
             </p>
+            <label htmlFor="json-paste" className="sr-only">Paste JSON data</label>
             <textarea
+              id="json-paste"
               className="w-full min-h-[200px] font-mono text-xs rounded-lg border bg-background p-3 mb-4 resize-y"
               placeholder='[{"id": "123", "text": "...", ...}]'
               value={jsonText}
@@ -210,6 +212,10 @@ export default function Import() {
             <div
               className="flex flex-col items-center justify-center border-2 border-dashed border-primary rounded-2xl p-10 cursor-pointer hover:bg-accent transition-colors"
               onClick={() => fileRef.current?.click()}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileRef.current?.click(); } }}
+              tabIndex={0}
+              role="button"
+              aria-label="Upload JSON file"
             >
               <MdFileUpload className="size-10 text-primary mb-3" />
               <p className="text-sm font-semibold">Click to upload JSON file</p>

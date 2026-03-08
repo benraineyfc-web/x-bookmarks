@@ -105,9 +105,15 @@ export default function Bookmarks() {
     if (dateTo) { const to = new Date(dateTo); to.setHours(23, 59, 59, 999); result = result.filter((bm) => new Date(bm.created_at || bm.importedAt || 0) <= to); }
 
     const [field, dir] = sortBy.split("-");
+    const isDateField = field === "created_at" || field === "importedAt";
     result.sort((a, b) => {
       let va = a[field] || 0, vb = b[field] || 0;
-      if (typeof va === "string") { va = va.toLowerCase(); vb = (vb || "").toLowerCase(); }
+      if (isDateField) {
+        va = va ? new Date(va).getTime() : 0;
+        vb = vb ? new Date(vb).getTime() : 0;
+      } else if (typeof va === "string") {
+        va = va.toLowerCase(); vb = (vb || "").toLowerCase();
+      }
       if (dir === "desc") return va > vb ? -1 : va < vb ? 1 : 0;
       return va < vb ? -1 : va > vb ? 1 : 0;
     });

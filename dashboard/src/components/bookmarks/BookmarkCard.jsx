@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,70 +11,17 @@ import {
 } from "react-icons/md";
 import { db } from "../../lib/db";
 import { getCategoryColor } from "../../lib/categorize";
+import { BADGE_VARIANTS, formatNumber, formatDate, SafeImg, getAuthorInfo } from "../../lib/utils-bookmarks";
 import BookmarkDetailDialog from "./BookmarkDetailDialog";
-
-const BADGE_VARIANTS = {
-  purple: "bg-purple-100 text-purple-700", blue: "bg-blue-100 text-blue-700",
-  pink: "bg-pink-100 text-pink-700", cyan: "bg-cyan-100 text-cyan-700",
-  teal: "bg-teal-100 text-teal-700", orange: "bg-orange-100 text-orange-700",
-  red: "bg-red-100 text-red-700", green: "bg-green-100 text-green-700",
-  yellow: "bg-yellow-100 text-yellow-700", gray: "bg-gray-100 text-gray-700",
-};
-
-function formatNumber(n) {
-  if (!n) return "0";
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
-  return String(n);
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  try { return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch { return dateStr; }
-}
-
-/** Image component that shows a placeholder on error instead of hiding */
-function SafeImg({ src, alt, className, loading, onClick }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return (
-      <div className={`flex items-center justify-center bg-muted text-muted-foreground ${className || ""}`} style={{ minHeight: 60 }}>
-        <MdImage className="size-6 opacity-40" />
-      </div>
-    );
-  }
-  return (
-    <img
-      src={src}
-      alt={alt || ""}
-      className={className}
-      loading={loading}
-      onClick={onClick}
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-/** Extract author info with URL fallback */
-function getAuthorInfo(bookmark) {
-  let username = bookmark.author_username || "";
-  let name = bookmark.author_name || "";
-
-  // Fallback: extract from tweet URL
-  if (!username && bookmark.url) {
-    const match = bookmark.url.match(/(?:x\.com|twitter\.com)\/([^/]+)\/status/);
-    if (match) username = match[1];
-  }
-
-  if (!name) name = username;
-  if (!name) name = "Unknown";
-
-  return { username, name };
-}
 
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick, onDelete, onFavoriteToggle }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
+
+  // Sync favorite state when prop changes (e.g. batch update or external toggle)
+  useEffect(() => {
+    setIsFav(bookmark.favorite || false);
+  }, [bookmark.favorite]);
   // Resolve best URL for each media item, preferring non-t.co URLs
   const validMedia = (bookmark.media || []).map(m => {
     const bestUrl = [m.url, m.preview_image_url, m.video_url].find(
@@ -101,6 +48,7 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
 
   const handleDelete = async (e) => {
     e.stopPropagation();
+    if (!window.confirm("Delete this bookmark? This cannot be undone.")) return;
     await db.bookmarks.delete(bookmark.id);
     onDelete?.(bookmark.id);
   };
@@ -113,8 +61,12 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
   return (
     <>
       <Card
-        className={`cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group ${isSelected ? "ring-2 ring-primary bg-accent/50" : ""}`}
+        className={`cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group focus-visible:ring-2 focus-visible:ring-primary ${isSelected ? "ring-2 ring-primary bg-accent/50" : ""}`}
         onClick={handleCardClick}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailOpen(true); } }}
+        tabIndex={0}
+        role="article"
+        aria-label={`Bookmark by ${authorName}: ${(bookmark.text || "").slice(0, 80)}`}
       >
         {/* Media preview at top of card */}
         {hasMedia && (
@@ -168,13 +120,13 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
               {authorUsername && <p className="text-[11px] text-muted-foreground leading-tight">@{authorUsername}</p>}
             </div>
             <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button variant="ghost" size="icon" className="size-6" onClick={handleFavorite}>
+              <Button variant="ghost" size="icon" className="size-6" onClick={handleFavorite} aria-label={isFav ? "Remove from favorites" : "Add to favorites"}>
                 {isFav ? <MdStar className="size-3.5 text-orange-400" /> : <MdStarBorder className="size-3.5 text-muted-foreground" />}
               </Button>
-              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" size="icon" className="size-6"><MdOpenInNew className="size-3.5 text-muted-foreground" /></Button>
+              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label="Open on X">
+                <Button variant="ghost" size="icon" className="size-6" aria-label="Open on X"><MdOpenInNew className="size-3.5 text-muted-foreground" /></Button>
               </a>
-              <Button variant="ghost" size="icon" className="size-6 hover:text-destructive" onClick={handleDelete}>
+              <Button variant="ghost" size="icon" className="size-6 hover:text-destructive" onClick={handleDelete} aria-label="Delete bookmark">
                 <MdDelete className="size-3.5 text-muted-foreground" />
               </Button>
             </div>
@@ -263,14 +215,16 @@ export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClic
       </Card>
 
       {/* Detail dialog */}
-      <BookmarkDetailDialog
-        bookmark={bookmark}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        onFavoriteToggle={onFavoriteToggle}
-        onDelete={onDelete}
-        onTagClick={onTagClick}
-      />
+      {detailOpen && (
+        <BookmarkDetailDialog
+          bookmark={bookmark}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          onFavoriteToggle={onFavoriteToggle}
+          onDelete={onDelete}
+          onTagClick={onTagClick}
+        />
+      )}
     </>
   );
 }

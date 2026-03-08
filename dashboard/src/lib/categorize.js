@@ -175,7 +175,8 @@ export function categorizeBookmark(bookmark) {
 
   for (const [category, config] of Object.entries(CATEGORIES)) {
     const score = config.keywords.reduce((acc, keyword) => {
-      if (searchText.includes(keyword.toLowerCase())) {
+      const pattern = new RegExp(`\\b${keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (pattern.test(searchText)) {
         return acc + 1;
       }
       return acc;
