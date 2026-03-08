@@ -75,8 +75,14 @@ function getAuthorInfo(bookmark) {
 export default function BookmarkCard({ bookmark, onSelect, isSelected, onTagClick, onDelete, onFavoriteToggle }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [isFav, setIsFav] = useState(bookmark.favorite || false);
-  // Filter media to only items with valid URLs
-  const validMedia = (bookmark.media || []).filter(m => m.url && m.url.startsWith('http') && !m.url.includes('t.co/'));
+  // Resolve best URL for each media item, preferring non-t.co URLs
+  const validMedia = (bookmark.media || []).map(m => {
+    const bestUrl = [m.url, m.preview_image_url, m.video_url].find(
+      u => u && u.startsWith('http') && !u.includes('t.co/')
+    );
+    if (!bestUrl) return null;
+    return { ...m, url: m.url?.includes('t.co/') ? bestUrl : m.url, preview_image_url: m.preview_image_url || bestUrl };
+  }).filter(Boolean);
   const hasMedia = validMedia.length > 0;
   const hasQuote = bookmark.quoteTweet && bookmark.quoteTweet.text;
   const hasUrls = bookmark.urls && bookmark.urls.length > 0;
