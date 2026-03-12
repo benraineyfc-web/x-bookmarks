@@ -4,6 +4,11 @@
  */
 
 export const CATEGORIES = {
+  "X Articles": {
+    color: "orange",
+    keywords: [],
+    _sourceMatch: "airtable_articles",
+  },
   "Claude": {
     color: "purple",
     keywords: [
@@ -174,6 +179,19 @@ export function categorizeBookmark(bookmark) {
   const matches = [];
 
   for (const [category, config] of Object.entries(CATEGORIES)) {
+    // Source-based match (e.g. X Articles from Airtable sync)
+    if (config._sourceMatch && bookmark._source === config._sourceMatch) {
+      matches.push({ category, score: 999, color: config.color });
+      continue;
+    }
+    // Also match by _airtable_title presence as a fallback
+    if (category === "X Articles" && bookmark._airtable_title) {
+      matches.push({ category, score: 999, color: config.color });
+      continue;
+    }
+
+    if (!config.keywords.length) continue;
+
     const score = config.keywords.reduce((acc, keyword) => {
       const pattern = new RegExp(`\\b${keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
       if (pattern.test(searchText)) {
@@ -190,8 +208,10 @@ export function categorizeBookmark(bookmark) {
   // Sort by score descending, return top matches
   matches.sort((a, b) => b.score - a.score);
 
-  // Return top 3 categories max for more specific tagging
-  return matches.slice(0, 3).map((m) => m.category);
+  // X Articles always keeps its slot; limit others to top 3
+  const xArticles = matches.filter(m => m.category === "X Articles");
+  const others = matches.filter(m => m.category !== "X Articles").slice(0, 3);
+  return [...xArticles, ...others].map((m) => m.category);
 }
 
 /**

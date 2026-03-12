@@ -145,7 +145,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0">
           <DialogTitle className="sr-only">Bookmark by {authorName}</DialogTitle>
           {/* Media gallery at top */}
           {hasMedia && (
@@ -155,7 +155,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
                 return (
                   <div
                     key={i}
-                    className={`relative overflow-hidden group ${visibleMedia.length === 1 ? "max-h-[500px]" : "max-h-[250px]"} ${i === 0 && visibleMedia.length === 3 ? "row-span-2" : ""}`}
+                    className={`relative overflow-hidden group ${visibleMedia.length === 1 ? "max-h-[600px]" : "max-h-[350px]"} ${i === 0 && visibleMedia.length === 3 ? "row-span-2" : ""}`}
                   >
                     {(m.type === "video" || m.type === "animated_gif") ? (
                       m.video_url ? (
