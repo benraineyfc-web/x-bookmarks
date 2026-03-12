@@ -5,8 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { MdFileUpload, MdContentPaste, MdCheckCircle, MdClose, MdRefresh, MdDeleteForever } from "react-icons/md";
+import { MdFileUpload, MdContentPaste, MdCheckCircle, MdClose, MdRefresh, MdDeleteForever, MdSync, MdVpnKey } from "react-icons/md";
 import { normalize, importBookmarks, deleteAllBookmarks } from "../lib/db";
+import { syncFromAirtable } from "../lib/airtable";
+
+const STORED_KEY = "xvault_airtable_key";
+const DEFAULT_KEY = import.meta.env.VITE_AIRTABLE_KEY || "";
 
 export default function Import() {
   const [jsonText, setJsonText] = useState("");
@@ -15,10 +19,15 @@ export default function Import() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("paste");
+  const [activeTab, setActiveTab] = useState("airtable");
   const [updateExisting, setUpdateExisting] = useState(true);
   const [freshImport, setFreshImport] = useState(false);
   const fileRef = useRef();
+
+  // Airtable sync state
+  const [airtableKey, setAirtableKey] = useState(() => localStorage.getItem(STORED_KEY) || DEFAULT_KEY);
+  const [syncProgress, setSyncProgress] = useState(null);
+  const [showKey, setShowKey] = useState(false);
 
   const addTag = () => {
     const t = tagInput.trim();
@@ -74,6 +83,30 @@ export default function Import() {
 
   const handlePaste = () => doImport(jsonText);
   const handleFile = async (e) => { const file = e.target.files?.[0]; if (!file) return; doImport(await file.text()); };
+
+  const doAirtableSync = async () => {
+    const key = airtableKey.trim();
+    if (!key) { setError("Enter your Airtable API key first."); return; }
+    localStorage.setItem(STORED_KEY, key);
+    setError("");
+    setResult(null);
+    setLoading(true);
+    setSyncProgress({ fetched: 0, stage: "Connecting to Airtable…" });
+    try {
+      const { bookmarks, articles, total } = await syncFromAirtable(key, (fetched) => {
+        setSyncProgress({ fetched, stage: `Fetching… ${fetched} records` });
+      });
+      setSyncProgress({ fetched: total, stage: `Importing ${total} records into local storage…` });
+      if (freshImport) await deleteAllBookmarks();
+      const allRecords = [...bookmarks, ...articles];
+      const { added, skipped, updated } = await importBookmarks(allRecords, [], { updateExisting: !freshImport && updateExisting });
+      setResult({ added, skipped, updated, total });
+    } catch (e) {
+      setError(`Sync failed: ${e.message}`);
+    }
+    setSyncProgress(null);
+    setLoading(false);
+  };
 
   return (
     <div>
@@ -174,7 +207,10 @@ export default function Import() {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <Button variant={activeTab === "airtable" ? "default" : "outline"} size="sm" onClick={() => setActiveTab("airtable")}>
+          <MdSync className="mr-1" /> Sync from X Vault
+        </Button>
         <Button variant={activeTab === "paste" ? "default" : "outline"} size="sm" onClick={() => setActiveTab("paste")}>
           <MdContentPaste className="mr-1" /> Paste JSON
         </Button>
@@ -182,6 +218,64 @@ export default function Import() {
           <MdFileUpload className="mr-1" /> Upload File
         </Button>
       </div>
+
+      {activeTab === "airtable" && (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              Pull all bookmarks and articles directly from your X Vault Airtable base into local storage.
+              Works on any device — no file export needed.
+            </p>
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                <MdVpnKey className="inline size-3.5 mr-1" />
+                Airtable API Key
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  type={showKey ? "text" : "password"}
+                  placeholder="pat7GI4v650YpB4Uu.xxxxx"
+                  value={airtableKey}
+                  onChange={(e) => setAirtableKey(e.target.value)}
+                  className="font-mono text-xs h-8"
+                />
+                <Button variant="ghost" size="sm" onClick={() => setShowKey(v => !v)}>
+                  {showKey ? "Hide" : "Show"}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Saved to browser storage. Leave blank to use environment variable.</p>
+            </div>
+
+            {syncProgress && (
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 mb-4">
+                <p className="text-sm font-semibold text-blue-800">{syncProgress.stage}</p>
+                {syncProgress.fetched > 0 && (
+                  <p className="text-xs text-blue-600 mt-1">{syncProgress.fetched.toLocaleString()} records fetched so far…</p>
+                )}
+              </div>
+            )}
+
+            <Button
+              disabled={!airtableKey.trim() || loading}
+              onClick={doAirtableSync}
+              className="w-full"
+            >
+              <MdSync className={`mr-2 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Syncing…" : "Sync All X Vault Records"}
+            </Button>
+
+            <div className="mt-4 rounded-lg bg-muted/50 p-3">
+              <p className="text-xs font-semibold mb-1">What gets synced</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
+                <li>• <strong>Bookmarks</strong> table — tweets, note tweets, external links</li>
+                <li>• <strong>X Articles</strong> table — article tweets with title &amp; preview</li>
+                <li>• All {(1593).toLocaleString()} records synced in one click</li>
+                <li>• Existing records updated only if they have new data</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {activeTab === "paste" && (
         <Card>
