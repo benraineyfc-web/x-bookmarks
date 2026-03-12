@@ -145,7 +145,7 @@ export default function BookmarkDetailDialog({ bookmark, open, onOpenChange, onF
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0">
+        <DialogContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[92vh] overflow-y-auto p-0">
           <DialogTitle className="sr-only">Bookmark by {authorName}</DialogTitle>
           {/* Media gallery at top */}
           {hasMedia && (

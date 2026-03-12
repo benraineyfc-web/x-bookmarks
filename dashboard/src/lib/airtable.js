@@ -72,6 +72,16 @@ function mapArticle(rec) {
   const f = rec.fields || {};
   const handle = (f['Author Handle'] || '').replace(/^@/, '');
   const id = f['Tweet ID'] || rec.id;
+  const articleUrl = f['Article URL'] || '';
+  const articleTitle = f['Article Title'] || '';
+  const previewText = f['Preview Text'] || '';
+  const articleBody = f['Article Body'] || '';
+
+  // Store article body in scraped_json so the "Linked Content" tab renders it
+  const scraped_json = (articleTitle || articleBody)
+    ? { articles: [{ title: articleTitle, description: previewText, text: articleBody, url: articleUrl }] }
+    : undefined;
+
   return {
     id: String(id),
     text: f['Tweet Text'] || '',
@@ -86,11 +96,12 @@ function mapArticle(rec) {
     bookmarks: 0,
     media: [],
     quoteTweet: null,
-    urls: f['Article URL']
-      ? [{ url: f['Article URL'], display_url: f['Article URL'], title: f['Article Title'] || '', description: f['Preview Text'] || '', thumbnail: '' }]
+    urls: articleUrl
+      ? [{ url: articleUrl, display_url: articleUrl, title: articleTitle, description: previewText, thumbnail: '' }]
       : [],
-    _airtable_title: f['Article Title'] || '',
-    _airtable_preview: f['Preview Text'] || '',
+    scraped_json,
+    _airtable_title: articleTitle,
+    _airtable_preview: previewText,
     _source: 'airtable_articles',
   };
 }
@@ -102,21 +113,21 @@ function mapArticle(rec) {
  */
 export async function syncFromAirtable(apiKey, onProgress) {
   const BOOKMARK_FIELDS = ['Tweet ID', 'Author Handle', 'Author Name', 'Content Type', 'Tweet Text', 'Full Text', 'External URLs', 'Tweet URL', 'Likes', 'Retweets', 'Replies', 'Views', 'Created At'];
-  const ARTICLE_FIELDS = ['Tweet ID', 'Author Handle', 'Author Name', 'Article Title', 'Preview Text', 'Tweet URL', 'Article URL', 'Likes', 'Retweets', 'Replies', 'Views', 'Created At', 'Tweet Text'];
+  const ARTICLE_FIELDS = ['Tweet ID', 'Author Handle', 'Author Name', 'Article Title', 'Preview Text', 'Article Body', 'Tweet URL', 'Article URL', 'Likes', 'Retweets', 'Replies', 'Views', 'Created At', 'Tweet Text'];
 
   let bookmarkCount = 0;
   let articleCount = 0;
 
-  const [bookmarkRecs, articleRecs] = await Promise.all([
-    fetchAllRecords(apiKey, 'Bookmarks', BOOKMARK_FIELDS, (n) => {
-      bookmarkCount = n;
-      if (onProgress) onProgress(bookmarkCount + articleCount);
-    }),
-    fetchAllRecords(apiKey, 'X Articles', ARTICLE_FIELDS, (n) => {
-      articleCount = n;
-      if (onProgress) onProgress(bookmarkCount + articleCount);
-    }),
-  ]);
+  // Fetch bookmarks first, then articles (articles have large Article Body field)
+  const bookmarkRecs = await fetchAllRecords(apiKey, 'Bookmarks', BOOKMARK_FIELDS, (n) => {
+    bookmarkCount = n;
+    if (onProgress) onProgress(bookmarkCount + articleCount);
+  });
+
+  const articleRecs = await fetchAllRecords(apiKey, 'X Articles', ARTICLE_FIELDS, (n) => {
+    articleCount = n;
+    if (onProgress) onProgress(bookmarkCount + articleCount);
+  });
 
   const bookmarks = bookmarkRecs.map(mapBookmark);
   const articles = articleRecs.map(mapArticle);

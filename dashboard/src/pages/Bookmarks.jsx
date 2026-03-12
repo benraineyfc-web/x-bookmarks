@@ -31,7 +31,7 @@ const SORT_OPTIONS = [
   { value: "views-desc", label: "Most Viewed" },
 ];
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 60;
 
 export default function Bookmarks() {
   const navigate = useNavigate();
